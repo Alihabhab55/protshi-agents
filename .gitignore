@@ -1,0 +1,14 @@
+# Secrets — never commit these
+.env
+
+# Virtual environment
+.venv/
+
+# Python bytecode cache
+__pycache__/
+
+# Local databases
+*.db
+
+# Local photo files
+photos/
