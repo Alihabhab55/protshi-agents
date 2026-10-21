@@ -31,3 +31,23 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
 
 - **`output_tokens` costs 5× `input_tokens`** ($25 vs $5 per million). The first
   successful call was 46 in / 161 out ≈ $0.004.
+
+## Week 2 — Data in, data out
+
+- **JSON is text with strict rules.** Double quotes only, commas between pairs, no
+  comma after the last one. `"tags"` is a real list (`[...]`), not one string with
+  commas in it. `json.load` turns `{...}` into a `dict` and `[...]` into a `list`.
+
+- **One missing comma → `json.decoder.JSONDecodeError: Expecting ',' delimiter:
+  line 4 column 3`.** JSON is all-or-nothing: nothing loads. I removed the comma at
+  the end of line 3, but the error pointed at line 4 — the parser reports where it
+  *noticed* the problem (the next key), not where the mistake is. Rule: check the
+  reported line **and the end of the line above it**.
+
+- **Same traceback rule as week 1.** Frames under `Lib\json\` are Python's own code,
+  skip them like `site-packages`. My line was `load_bag.py, line 4`.
+
+- **Photos live in Google Drive, copied into `photos/`, never committed.** Drive
+  desktop syncs to `G:\My Drive\Project`. `photos/` is in `.gitignore` — confirmed
+  with `git check-ignore -v` and `git status`. Files are named `IMG_xxxx.JPG.jpeg`
+  (double extension from iPhone export); use the last extension for the image type.
