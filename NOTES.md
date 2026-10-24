@@ -51,3 +51,50 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
   desktop syncs to `G:\My Drive\Project`. `photos/` is in `.gitignore` — confirmed
   with `git check-ignore -v` and `git status`. Files are named `IMG_xxxx.JPG.jpeg`
   (double extension from iPhone export); use the last extension for the image type.
+
+- **The org was put on hold → `anthropic.BadRequestError`, HTTP 400,
+  `error_code: organization_on_hold`.** Not an expired or wrong key (that would be a
+  401). The key was accepted and the request got a `request_id`; the *organization*
+  was refused. Nothing in the code could fix it. Fixed by submitting a review request
+  through the appeal link in the error. Nothing was billed.
+
+- **W02·D3 first photo call worked: 1450 in / 82 out ≈ $0.009.** The image is most of
+  the input tokens, so one photo call costs about twice my week 1 text call.
+
+- **Prefill is gone on this model → HTTP 400 `This model does not support assistant
+  message prefill. The conversation must end with a user message.`** The plan said to
+  start the assistant turn with `{`. `claude-opus-5` rejects that before doing any work
+  (free). Replacement: **structured outputs** — `output_config={"format": {"type":
+  "json_schema", "schema": ...}}`. The API then guarantees the reply is valid JSON with
+  exactly the schema's keys.
+
+- **W02·D4 before vs after, same photo (`IMG_2417`, black quilted tote):**
+
+  | | Before (D3) | After (D4) |
+  |---|---|---|
+  | Where the rules live | In the user message, next to the photo | `system=` prompt; user message is just "Describe this bag." |
+  | Fields | 4 (name, colour, material, tags) | 9 (title, product_type, colour, material, size, closure, description, seo_description, tags) |
+  | How JSON is enforced | Asked politely | Schema via structured outputs (prefill → 400) |
+  | First character | `{` (got lucky — not guaranteed) | `{` (guaranteed) |
+  | Preamble / code fence | None this time | None, and can't happen |
+  | Formatting | Pretty-printed over several lines | One compact line |
+  | Lowercase values | No: `"Black"`, `"Quilted leather"` | Yes: `"black"`, `"quilted leather"` |
+  | Tokens / cost | 1450 in / 82 out ≈ $0.009 | 2102 in / 220 out ≈ $0.016 |
+
+  Before:
+  ```
+  {"name": "Quilted Chevron Mini Tote", "colour": "Black",
+   "material": "Quilted leather", "tags": ["tote", "quilted", "black", "leather", "handbag", "mini"]}
+  ```
+  After:
+  ```
+  {"title":"Chevron Quilted Leather Mini Tote","product_type":"tote","colour":"black",
+   "material":"quilted leather","size":"small","closure":"zip", "description":"...",
+   "seo_description":"...","tags":["tote","black","quilted","leather","zip","mini tote","handbag"]}
+  ```
+
+  Takeaways: the system prompt fixed the lowercase problem (a rule I stated, it
+  followed). The schema made the format a guarantee instead of a hope. Cost went up
+  because the system prompt and schema add ~650 input tokens and nine fields need more
+  output. One new inconsistency: title says **"Mini"** but size says **"small"** — the
+  schema checks the shape, not whether the values agree with each other.
