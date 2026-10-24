@@ -107,3 +107,9 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
   object — zero tracebacks. Preamble, fence and empty all say `Expecting value (line 1,
   column 1)`: the very first character isn't JSON. Still needed even with structured
   outputs, because a reply cut off by `max_tokens` or a refusal isn't complete JSON.
+
+- **W02·D6 all 5 photos parsed, all 5 pass `python -m json.tool`.** Total ≈ $0.08.
+  Raw replies saved in `evals/raw/`, findings in `evals/observations.md`. Biggest
+  problems: material (leather vs faux is a guess every time), promised straps that
+  aren't in the photo, and size with nothing for scale. Same photo gives a different
+  title each run. Two photos (2429, 2433) are the same bag in two colours.
