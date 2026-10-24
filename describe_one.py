@@ -1,4 +1,4 @@
-"""W02-D3/D4 - send one bag photo to Claude and print the raw reply as JSON only.
+"""W02-D3/D4/D5 - send one bag photo to Claude, print the raw reply, then parse it safely.
 
 Run:  python describe_one.py photos/IMG_2417.JPG.jpeg
 """
@@ -10,6 +10,8 @@ import sys
 
 import anthropic
 from dotenv import load_dotenv
+
+from parse_reply import parse_reply
 
 # 1. Read the image path from the command line.
 # sys.argv[0] is this script's name, sys.argv[1] is the path typed after it.
@@ -108,12 +110,24 @@ response = client.messages.create(
 )
 
 # 3. Print the raw reply exactly as it comes back - no json.loads, no cleanup.
-for block in response.content:
-    if block.type == "text":
-        print(block.text)
+# Join every text block into one string; there is usually exactly one.
+reply_text = "".join(block.text for block in response.content if block.type == "text")
+print(reply_text)
 
 print(
     f"\nstop_reason: {response.stop_reason}  "
     f"input tokens: {response.usage.input_tokens}  "
     f"output tokens: {response.usage.output_tokens}"
 )
+
+# W02-D5: the schema guarantees valid JSON only when Claude finishes normally.
+# If it was cut off (max_tokens) or declined (refusal), the text may be incomplete.
+if response.stop_reason != "end_turn":
+    print(f"\nWarning: reply did not finish normally (stop_reason: {response.stop_reason})")
+
+# W02-D5: parse safely. parse_reply never raises - it returns None on failure.
+bag = parse_reply(reply_text)
+if bag is None:
+    raise SystemExit("Stopping: no usable JSON for this photo.")
+
+print(f"\nParsed OK - {len(bag)} fields. title: {bag['title']}")

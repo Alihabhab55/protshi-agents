@@ -98,3 +98,12 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
   because the system prompt and schema add ~650 input tokens and nine fields need more
   output. One new inconsistency: title says **"Mini"** but size says **"small"** — the
   schema checks the shape, not whether the values agree with each other.
+
+- **W02·D5 parse safely.** `json.loads` raises `JSONDecodeError` on bad text; inside
+  `try/except` that becomes a printed message + the raw text (`repr` so `\n` and empty
+  strings are visible) and the function returns `None` instead of crashing. Tested with
+  `python parse_reply.py` on 6 broken inputs — missing comma, "Here is the JSON:"
+  preamble, ```` ```json ```` fence, cut-off reply, empty string, a list instead of an
+  object — zero tracebacks. Preamble, fence and empty all say `Expecting value (line 1,
+  column 1)`: the very first character isn't JSON. Still needed even with structured
+  outputs, because a reply cut off by `max_tokens` or a refusal isn't complete JSON.
