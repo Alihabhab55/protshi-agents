@@ -113,3 +113,36 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
   problems: material (leather vs faux is a guess every time), promised straps that
   aren't in the photo, and size with nothing for scale. Same photo gives a different
   title each run. Two photos (2429, 2433) are the same bag in two colours.
+
+## Week 3 — Schema and validation
+
+- **Photos renamed to `bag-NNN_N.jpg`** (in `photos/` only — Drive originals untouched).
+  `bag-NNN` is the group key (one bag model), `_N` is the photo number, `_1` is the
+  main photo. Three-digit IDs so `bag-010` sorts after `bag-009`. One group = one bag
+  *model*: different angles **and** different colours of the same model go in the same
+  group. Mapping from the week 2 names (`evals/raw/` still uses the old ones):
+
+  | Old | New |
+  |---|---|
+  | IMG_2417 | bag-001_1.jpg |
+  | IMG_2429 (taupe) | bag-002_1.jpg |
+  | IMG_2433 (tan) | bag-002_2.jpg |
+  | IMG_2431 | bag-003_1.jpg |
+  | IMG_2461 | bag-004_1.jpg |
+
+- **Why grouping is deterministic code, not a model's job.** The answer is already in
+  the filename, so there's nothing to judge — only text to split at `_`.
+  - *Same result every time.* `group_photos` puts `bag-002_2.jpg` in `bag-002` forever.
+    A model doesn't: in week 2 the same photo got three different titles in three runs.
+  - *Free and instant.* No API call, no tokens. A model would charge for every photo.
+  - *A model would get it wrong.* bag-002's two photos are different colours — a model
+    would likely split them. Two different black bags could look alike and be merged.
+  - *Mistakes are visible and fixable.* If a bag is grouped wrong, the filename is wrong;
+    rename it. A model's mistake has no cause you can point at.
+  - *Testable with an exact answer.* A test can assert `bag-002` has exactly 2 photos.
+  - Rule: **use the model only where judgment is needed (describing the bag). Anything
+    with one correct answer — grouping, counting, sorting, checking a rule — is code.**
+
+- **Files that don't match the pattern are skipped with a warning, never guessed.**
+  Tested with `IMG_9999.jpg`, `notes.txt` and `bag-7_1.jpg` (only one digit). Photo
+  numbers are compared as numbers, so `_10` sorts after `_2`, not after `_1`.

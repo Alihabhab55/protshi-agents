@@ -1,6 +1,6 @@
 """W02-D3/D4/D5 - send one bag photo to Claude, print the raw reply, then parse it safely.
 
-Run:  python describe_one.py photos/IMG_2417.JPG.jpeg
+Run:  python describe_one.py photos/bag-001_1.jpg
 """
 
 import base64
