@@ -160,3 +160,5 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
   (taupe → beige/khaki, tan → brown).
   `describe_one.py` still asks for a single `colour` — W03·D3 will build the request
   from `ProductDraft` so there's only one definition.
+  → Decided: **added `taupe` and `tan`** (17 colours). Most current stock is in those
+  shades, and customers search for them by name.

@@ -15,6 +15,8 @@ class Colour(str, Enum):
     white = "white"
     cream = "cream"
     beige = "beige"
+    taupe = "taupe"
+    tan = "tan"
     navy = "navy"
     red = "red"
     khaki = "khaki"
@@ -56,7 +58,7 @@ if __name__ == "__main__":
     good = {
         "title": "Taupe Pebbled Structured Day Tote",
         "product_type": "tote",
-        "colours": ["beige", "brown"],
+        "colours": ["taupe", "tan"],
         "material": "pebbled faux leather",
         "size": "medium",
         "closure": "not visible",
@@ -72,7 +74,7 @@ if __name__ == "__main__":
         "11 tags": {**good, "tags": [f"tag{i}" for i in range(11)]},
         "title too short": {**good, "title": "Black Bag"},
         "SEO description too long": {**good, "seo_description": "x" * 161},
-        "colour not in the list": {**good, "colours": ["taupe"]},
+        "colour not in the list": {**good, "colours": ["purple"]},
         "no colours at all": {**good, "colours": []},
         "colour as text, not a list": {**good, "colours": "black"},
         "missing field": {k: v for k, v in good.items() if k != "material"},
