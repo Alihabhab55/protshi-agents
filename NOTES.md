@@ -146,3 +146,17 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
 - **Files that don't match the pattern are skipped with a warning, never guessed.**
   Tested with `IMG_9999.jpg`, `notes.txt` and `bag-7_1.jpg` (only one digit). Photo
   numbers are compared as numbers, so `_10` sorts after `_2`, not after `_1`.
+
+- **W03·D2 `ProductDraft` in `schema.py`.** pydantic was already installed (the
+  anthropic SDK depends on it — it's in requirements.txt). Types say what *kind* of
+  value; `Field(...)` adds limits: title 10–70 chars, seo_description ≤ 160, tags ≤ 10
+  (on a list `max_length` counts items). `Colour` is an enum of 15 values;
+  `colours` is a **list** of them (min 1) because one group can be one model in several
+  colours. `size` is an enum too (mini/small/medium/large).
+  11 tags → `ValidationError ... tags: List should have at most 10 items, not 11`.
+  The error names the field — unlike W02·D1's `line 4 column 3`, no detective work.
+  Gotcha: **taupe and tan are not in the colour list**, but 3 of my 4 bags are taupe
+  or tan. `colours: ["taupe"]` is rejected. Decide: add them, or map them
+  (taupe → beige/khaki, tan → brown).
+  `describe_one.py` still asks for a single `colour` — W03·D3 will build the request
+  from `ProductDraft` so there's only one definition.
