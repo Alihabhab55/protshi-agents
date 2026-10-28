@@ -1,17 +1,19 @@
-"""W02-D3/D4/D5 - send one bag photo to Claude, print the raw reply, then parse it safely.
+"""W02-D3 to W03-D3 - send one bag photo to Claude and get a validated ProductDraft back.
 
 Run:  python describe_one.py photos/bag-001_1.jpg
 """
 
 import base64
+import json
 import mimetypes
 import os
 import sys
 
 import anthropic
 from dotenv import load_dotenv
+from pydantic import ValidationError
 
-from parse_reply import parse_reply
+from schema import ProductDraft
 
 # 1. Read the image path from the command line.
 # sys.argv[0] is this script's name, sys.argv[1] is the path typed after it.
@@ -41,55 +43,29 @@ with open(image_path, "rb") as f:
 
 client = anthropic.Anthropic()
 
-# W02-D4: the field list lives in the system prompt, not in the user message.
-# The system prompt holds the standing rules; the user message holds only the photo.
+# The system prompt keeps only the general rules. The per-field rules now live in
+# ProductDraft's Field descriptions, which travel inside the tool definition.
 SYSTEM_PROMPT = """You write product listings for an online bag store.
-Look at the bag in the photo and describe it using exactly these nine fields:
-
-1. title - a product name, 10 to 70 characters.
-2. product_type - one word or short phrase, e.g. tote, crossbody, clutch, backpack.
-3. colour - the main colour, one word.
-4. material - what the bag appears to be made of.
-5. size - one of: mini, small, medium, large.
-6. closure - how it closes, e.g. zip, magnetic snap, flap, open top. Use "not visible" if you can't see it.
-7. description - 2 to 3 sentences for the product page, plain English.
-8. seo_description - one sentence, at most 160 characters.
-9. tags - 3 to 10 short words.
-
-Write every value in lowercase except title and description.
+Look at the bag in the photo and record it with the save_product_draft tool.
 Only describe what you can see in the photo. Do not invent a brand."""
 
-# W02-D4: prefill ("start the reply with {") returns a 400 on this model.
-# Structured outputs replace it: the API guarantees the reply is JSON
-# matching this schema - no preamble, no code fence, no missing keys.
-BAG_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "title": {"type": "string"},
-        "product_type": {"type": "string"},
-        "colour": {"type": "string"},
-        "material": {"type": "string"},
-        "size": {"type": "string", "enum": ["mini", "small", "medium", "large"]},
-        "closure": {"type": "string"},
-        "description": {"type": "string"},
-        "seo_description": {"type": "string"},
-        "tags": {"type": "array", "items": {"type": "string"}},
-    },
-    "required": [
-        "title", "product_type", "colour", "material", "size",
-        "closure", "description", "seo_description", "tags",
-    ],
-    "additionalProperties": False,
+# W03-D3: ProductDraft becomes a tool. model_json_schema() writes the JSON schema
+# from the pydantic class - field names, types, the colour list, the descriptions.
+# One definition, used twice: to ask the model, and to check its answer.
+SAVE_TOOL = {
+    "name": "save_product_draft",
+    "description": "Save the product listing draft for the bag in the photo.",
+    "input_schema": ProductDraft.model_json_schema(),
 }
 
 response = client.messages.create(
     model="claude-opus-5",
     max_tokens=2048,
     system=SYSTEM_PROMPT,
-    output_config={
-        "effort": "low",
-        "format": {"type": "json_schema", "schema": BAG_SCHEMA},
-    },
+    output_config={"effort": "low"},
+    tools=[SAVE_TOOL],
+    # Force this exact tool: the model must fill in its arguments, not write text.
+    tool_choice={"type": "tool", "name": "save_product_draft"},
     messages=[
         {
             "role": "user",
@@ -109,25 +85,30 @@ response = client.messages.create(
     ],
 )
 
-# 3. Print the raw reply exactly as it comes back - no json.loads, no cleanup.
-# Join every text block into one string; there is usually exactly one.
-reply_text = "".join(block.text for block in response.content if block.type == "text")
-print(reply_text)
-
 print(
-    f"\nstop_reason: {response.stop_reason}  "
+    f"stop_reason: {response.stop_reason}  "
     f"input tokens: {response.usage.input_tokens}  "
     f"output tokens: {response.usage.output_tokens}"
 )
 
-# W02-D5: the schema guarantees valid JSON only when Claude finishes normally.
-# If it was cut off (max_tokens) or declined (refusal), the text may be incomplete.
-if response.stop_reason != "end_turn":
-    print(f"\nWarning: reply did not finish normally (stop_reason: {response.stop_reason})")
+# 3. Find the tool call. Its .input is already a Python dict - the SDK parsed it.
+# No text to join, no json.loads, no code fence to strip.
+tool_call = next((b for b in response.content if b.type == "tool_use"), None)
+if tool_call is None:
+    raise SystemExit("Stopping: the model did not call save_product_draft.")
 
-# W02-D5: parse safely. parse_reply never raises - it returns None on failure.
-bag = parse_reply(reply_text)
-if bag is None:
-    raise SystemExit("Stopping: no usable JSON for this photo.")
+# Still look at the raw arguments first, before trusting them.
+print(json.dumps(tool_call.input, indent=2))
 
-print(f"\nParsed OK - {len(bag)} fields. title: {bag['title']}")
+# 4. The tool guarantees the shape. pydantic checks the rules: lengths, 10 tags,
+# colours from the list. A failure prints the field names instead of crashing.
+try:
+    draft = ProductDraft.model_validate(tool_call.input)
+except ValidationError as e:
+    print("\nThe model's answer broke the rules:")
+    for err in e.errors():
+        field = ".".join(str(part) for part in err["loc"])
+        print(f"  {field}: {err['msg']}")
+    raise SystemExit("Stopping: invalid ProductDraft.")
+
+print(f"\nValid ProductDraft - title: {draft.title}")

@@ -162,3 +162,24 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
   from `ProductDraft` so there's only one definition.
   → Decided: **added `taupe` and `tan`** (17 colours). Most current stock is in those
   shades, and customers search for them by name.
+
+- **W03·D3 extraction is now tool use.** `ProductDraft.model_json_schema()` becomes the
+  tool's `input_schema` (tool `save_product_draft`), and
+  `tool_choice={"type": "tool", "name": "save_product_draft"}` forces the model to call
+  it — the answer arrives as `tool_use` with `.input` already a Python dict. Allowed on
+  `claude-opus-5`; newer models (Opus 5.5 etc.) reject forced tool_choice with a 400,
+  so a model switch later means `"auto"` + a prompt instruction.
+  - **One definition, used twice:** the same class writes the request schema *and*
+    validates the answer. The field rules moved from the system prompt into
+    `Field(description=...)`, so they can't drift apart.
+  - **Not `strict: true`:** strict tool schemas don't support `minLength`/`maxLength`.
+    Without strict, those limits are sent as hints and **pydantic enforces them**
+    afterwards. Bad answers print the field names and stop cleanly (W03·D4 adds retry).
+  - **Deleted `parse_reply.py`** (the W02·D5 json.loads + try/except). No text to join,
+    no json.loads, no fence to strip. The *idea* survives: look at the raw arguments
+    first, then validate inside try/except.
+  - **Two week 2 problems fixed by field descriptions:** material now says
+    "leather-look" instead of guessing real vs faux, and the description no longer
+    promises a strap that isn't in the photo.
+  - bag-002_1: `stop_reason: tool_use`, 2731 in / 388 out ≈ $0.023 — dearer than week 2
+    (≈ $0.016) because the schema with descriptions and 17 colours is bigger.
