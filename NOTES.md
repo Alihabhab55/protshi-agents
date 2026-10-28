@@ -203,3 +203,23 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
   - `·` printed as `�` in the Windows terminal (console encoding) → used `|`.
   - `describe_one.py` is now a thin wrapper around `extract_group`, so there is only
     one prompt and one tool definition in the project.
+
+- **W03·D5 drafts written to `out/bag-NNN.json`, `--limit` added.** Each valid draft
+  is written the moment it passes (not at the end), so a later crash loses nothing.
+  `model_dump_json` turns the enums back into plain strings. `argparse` handles
+  `--limit`, `--out` and writes `--help` for free. `--limit` takes the first N groups
+  *after sorting*, so it's always the same N. `out/` is in .gitignore — generated, and
+  heading for SQLite in week 4.
+  Run: `python extract.py --limit 10` → `4 groups | 4 valid | 0 failed` (only 4 groups
+  exist; the plan's "10 valid" needs more photos). ≈ $0.10.
+- **Read as a shop owner — two files:**
+  - `bag-002` (2 photos): ✅ both colours found (`taupe`, `tan`) — sending the group
+    together works. ❌ "panelled body" — that's bag-003, this one is plain. ⚠️ title
+    "Grab Tote Handbag" says the same thing three times.
+  - `bag-004`: ❌ colours `taupe` **and** `khaki` for a one-colour bag — it read the
+    textured panel and the smooth trim as two colours. "colours" is ambiguous: *colours
+    on the bag* or *colour versions sold*? I mean versions. ❌ "front **and back**
+    panel" — the back isn't in the photo. 🔍 still misses the crystals on the handles.
+  - Verdict: **not publishable as-is, good as drafts.** Each has 1–2 factual errors a
+    customer could notice. This is exactly why everything goes to Shopify as a draft
+    for a person to review (W05).

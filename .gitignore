@@ -12,3 +12,6 @@ __pycache__/
 
 # Local photo files
 photos/
+
+# Generated listings (regenerate with extract.py)
+out/

@@ -1,13 +1,14 @@
-"""W03-D4 - extract a ProductDraft for every bag group, retry once, never stop the run.
+"""W03-D4/D5 - extract a ProductDraft for every bag group, retry once, never stop the run.
 
-Run:  python extract.py photos
+Run:  python extract.py --limit 10
 """
 
+import argparse
 import base64
 import json
 import mimetypes
 import os
-import sys
+from pathlib import Path
 
 import anthropic
 from dotenv import load_dotenv
@@ -108,8 +109,12 @@ def extract_group(client, group_key, paths):
     return None, error_text
 
 
-def run(client, groups):
-    """Extract every group. One group failing never stops the others."""
+def run(client, groups, out_dir=None):
+    """Extract every group. One group failing never stops the others.
+
+    With out_dir, each valid draft is written to <out_dir>/<group_key>.json
+    the moment it passes - not at the end - so a crash later loses nothing.
+    """
     valid, failed = {}, {}
     for group_key, paths in groups.items():
         print(f"\n{group_key} ({len(paths)} photo{'s' if len(paths) > 1 else ''})")
@@ -117,6 +122,11 @@ def run(client, groups):
         if draft is not None:
             valid[group_key] = draft
             print(f"  valid - {draft.title}")
+            if out_dir is not None:
+                out_path = Path(out_dir) / f"{group_key}.json"
+                # model_dump_json turns the enums back into plain strings ("taupe").
+                out_path.write_text(draft.model_dump_json(indent=2), encoding="utf-8")
+                print(f"  wrote {out_path}")
         else:
             failed[group_key] = error
             print(f"  FAILED - recorded, moving on")
@@ -128,14 +138,29 @@ def run(client, groups):
 
 
 def main():
-    if len(sys.argv) != 2:
-        raise SystemExit("Usage: python extract.py <photo_folder>")
+    # argparse reads named options like --limit 10 and writes the --help text for us.
+    parser = argparse.ArgumentParser(description="Extract a ProductDraft for each bag group.")
+    parser.add_argument("folder", nargs="?", default="photos",
+                        help="photo folder (default: photos)")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="only process the first N groups")
+    parser.add_argument("--out", default="out", help="output folder (default: out)")
+    args = parser.parse_args()
+
+    if not Path(args.folder).is_dir():
+        raise SystemExit(f"Not a folder: {args.folder}")
 
     load_dotenv()
     if not os.getenv("ANTHROPIC_API_KEY"):
         raise SystemExit("ANTHROPIC_API_KEY is not set. Check your .env file.")
 
-    run(anthropic.Anthropic(), group_photos(sys.argv[1]))
+    groups = group_photos(args.folder)
+    if args.limit is not None:
+        # Groups are sorted by key, so --limit 10 always means the same first ten.
+        groups = dict(list(groups.items())[:args.limit])
+
+    Path(args.out).mkdir(exist_ok=True)
+    run(anthropic.Anthropic(), groups, out_dir=args.out)
 
 
 if __name__ == "__main__":
