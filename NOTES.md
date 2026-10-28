@@ -183,3 +183,23 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
     promises a strap that isn't in the photo.
   - bag-002_1: `stop_reason: tool_use`, 2731 in / 388 out ≈ $0.023 — dearer than week 2
     (≈ $0.016) because the schema with descriptions and 17 colours is bigger.
+
+- **W03·D4 validate → retry once → fail cleanly, in `extract.py`.** Loops over
+  `group_photos()` and sends **all photos of a group in one request**.
+  - Every tool call goes through `ProductDraft.model_validate`.
+  - On a `ValidationError` the conversation continues instead of starting over:
+    `[user: photos] → [assistant: its tool_use] → [user: tool_result, is_error=True,
+    "rejected: - tags: at most 10 items..."]`. `tool_use_id` links the error to the
+    exact call. The model sees its own mistake and the reason, then calls the tool again.
+  - Second failure → `(None, error)`; the group goes into `failed` and the loop moves
+    on. One bad bag never stops the run.
+  - **Tested without paying:** `test_retry.py` swaps in a fake client that returns
+    pre-written answers (good / 11 tags then fixed / wrong twice / good). Result: 3 valid,
+    1 failed, run continued, and the retry message really carried the error back.
+    A real "impossible photo" is hard to produce on demand — the model usually manages
+    *something* valid — so a fake model is the reliable way to test the failure path.
+  - Real run: `4 groups | 4 valid | 0 failed`, no retries needed, ≈ $0.10 total.
+    bag-002 (2 photos) costs ≈ 1,400 more input tokens — each extra photo ≈ $0.007.
+  - `·` printed as `�` in the Windows terminal (console encoding) → used `|`.
+  - `describe_one.py` is now a thin wrapper around `extract_group`, so there is only
+    one prompt and one tool definition in the project.
