@@ -223,3 +223,31 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
   - Verdict: **not publishable as-is, good as drafts.** Each has 1–2 factual errors a
     customer could notice. This is exactly why everything goes to Shopify as a draft
     for a person to review (W05).
+
+- **W03·D6 `validate_folder.py` — proving the validator actually rejects.**
+  Hand-edited `out/bag-003.json` so `tags` was one string
+  (`"taupe bag, top handle, ..."`) instead of a list. Result:
+  ```
+  REJECTED  out\bag-003.json
+      tags: Input should be a valid array
+  4 files | 3 valid | 1 rejected        exit code: 1
+  ```
+  Names the **file** and the **field**, exits **non-zero**. Says "array" (JSON's word)
+  here but "list" (Python's word) in `schema.py` — `model_validate_json` reads JSON
+  text, `model_validate` reads a Python dict. Same rule, different vocabulary.
+  - Why the exit code matters: `0` = all good, anything else = problem. Scripts, CI
+    and the scheduler in week 12 read the exit code, not the text.
+  - A file with a missing comma is caught too, as `(file): Invalid JSON: expected ','
+    or '}' at line 4 column 3` — the W02·D1 error again, now inside a report instead of
+    a crash. The line is again the one *after* the missing comma.
+  - Restored bag-003 afterwards → `4 valid | 0 rejected`, exit 0.
+- **Week 3 acceptance — all free, no API calls:**
+  - D1 `group_photos.py photos` → 4 groups, 5 photos, no model call ✅
+  - D2 11 tags → `tags: List should have at most 10 items` ✅
+  - D3 extraction returns tool arguments; no fence-stripping code left ✅
+  - D4 `test_retry.py` → impossible bag marked failed, run continues ✅
+  - D5 `extract.py --limit 10` → `4 groups | 4 valid | 0 failed`, 4 files in out/ ✅
+    (plan says 10; only 4 groups exist)
+  - D6 validator names file + field, exits 1 ✅
+- **Open from D5:** `colours` is ambiguous (bag-004 got `taupe` + `khaki` for one
+  colour). Fix the field description now or in W08·D5.
