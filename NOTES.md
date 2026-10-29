@@ -251,3 +251,29 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
   - D6 validator names file + field, exits 1 ✅
 - **Open from D5:** `colours` is ambiguous (bag-004 got `taupe` + `khaki` for one
   colour). Fix the field description now or in W08·D5.
+
+## Week 4 — SQLite catalog
+
+- **W04·D1 SQL by hand.** `catalog.db` created with Python's built-in `sqlite3`;
+  `practice` table, 3 rows typed by hand, queried with SELECT / WHERE / ORDER BY and
+  checked in DB Browser. Forgetting `con.commit()` = rows silently lost. Close DB
+  Browser before Python writes, or: `database is locked`. `*.db` is already ignored.
+
+- **W04·D2 `products` table in `catalog.py`** — all SQL for the project lives there.
+  One row per bag group: identity (`id`, `group_key`, `photo_hash`), the nine content
+  fields, bookkeeping (`status`, `model_used`, `cost_usd`, `error`, `created_at`,
+  `updated_at`, `shopify_product_id`).
+  - **SQLite has no list type** → `colours` and `tags` are stored as JSON text
+    (`'["taupe", "tan"]'`) and turned back into lists with `json.loads` when read.
+  - **Content columns allow NULL** (empty): a failed bag has a row but no title.
+  - **`status` has a `CHECK`** — only pending / extracted / failed / pushed. A typo
+    like `'done'` → `IntegrityError: CHECK constraint failed`. Same idea as the Colour
+    enum, enforced by the database itself.
+  - **`group_key` is `NOT NULL`**; `UNIQUE` comes in W04·D3.
+  - `photo_hash`: a fingerprint of the photos' bytes. If a photo is replaced, the hash
+    changes → we know to extract again even though the filename didn't change.
+  - `created_at` / `updated_at` default to `CURRENT_TIMESTAMP`, which is **UTC**, not
+    Lebanon time (2–3 h behind local).
+  - `CREATE TABLE IF NOT EXISTS` → running `catalog.py` twice is safe.
+  - Constraint tests ran in `sqlite3.connect(":memory:")` — a throwaway database in
+    RAM — so the real catalog.db stayed empty.
