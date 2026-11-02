@@ -1,10 +1,11 @@
-"""W03-D4/D5 - extract a ProductDraft for every bag group, retry once, never stop the run.
+"""W03-D4 to W04-D4 - extract every bag group into catalog.db, skipping work already done.
 
 Run:  python extract.py --limit 10
 """
 
 import argparse
 import base64
+import hashlib
 import json
 import mimetypes
 import os
@@ -14,10 +15,14 @@ import anthropic
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
+from catalog import connect, get_product, save_product
 from group_photos import group_photos
 from schema import ProductDraft
 
 MODEL = "claude-opus-5"
+# claude-opus-5 list prices, USD per million tokens. W07-D5 moves these to config.py.
+INPUT_USD_PER_MTOK = 5.00
+OUTPUT_USD_PER_MTOK = 25.00
 
 SYSTEM_PROMPT = """You write product listings for an online bag store.
 Look at the bag in the photos and record it with the save_product_draft tool.
@@ -38,6 +43,19 @@ def image_block(path):
     with open(path, "rb") as f:
         data = base64.standard_b64encode(f.read()).decode("utf-8")
     return {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data}}
+
+
+def photos_hash(paths):
+    """A fingerprint of the photos' bytes. Replace or add a photo -> a different hash."""
+    h = hashlib.sha256()
+    for path in paths:              # paths are already sorted by photo number
+        h.update(Path(path).read_bytes())
+    return h.hexdigest()
+
+
+def cost_of(usage):
+    return (usage.input_tokens * INPUT_USD_PER_MTOK
+            + usage.output_tokens * OUTPUT_USD_PER_MTOK) / 1_000_000
 
 
 def ask(client, messages):
@@ -62,10 +80,12 @@ def describe_errors(e):
 
 
 def extract_group(client, group_key, paths):
-    """Return (draft, None) on success or (None, error_text) after two failed attempts.
+    """Return (draft, None, cost_usd) on success or (None, error_text, cost_usd).
 
+    cost_usd adds up every attempt - a retry is paid for too.
     Never raises for a bad answer - the caller can always move on to the next group.
     """
+    cost_usd = 0.0
     messages = [{
         "role": "user",
         "content": [image_block(p) for p in paths]
@@ -74,17 +94,18 @@ def extract_group(client, group_key, paths):
 
     for attempt in (1, 2):
         response = ask(client, messages)
+        cost_usd += cost_of(response.usage)
         print(f"  attempt {attempt}: stop_reason={response.stop_reason}  "
               f"in={response.usage.input_tokens} out={response.usage.output_tokens}")
 
         tool_call = next((b for b in response.content if b.type == "tool_use"), None)
         if tool_call is None:
             # Nothing to correct - there is no tool call to answer with an error.
-            return None, f"no tool call (stop_reason={response.stop_reason})"
+            return None, f"no tool call (stop_reason={response.stop_reason})", cost_usd
 
         # 1. Validate every result against ProductDraft.
         try:
-            return ProductDraft.model_validate(tool_call.input), None
+            return ProductDraft.model_validate(tool_call.input), None, cost_usd
         except ValidationError as e:
             error_text = describe_errors(e)
             print(f"  attempt {attempt} broke the rules:\n{error_text}")
@@ -106,35 +127,45 @@ def extract_group(client, group_key, paths):
         print(f"  rejected input: {json.dumps(tool_call.input)}")
 
     # 3. Two failures: give up on this group, but only this group.
-    return None, error_text
+    return None, error_text, cost_usd
 
 
-def run(client, groups, out_dir=None):
-    """Extract every group. One group failing never stops the others.
+def run(client, groups, con):
+    """Extract every group into the database. One group failing never stops the others."""
+    new, skipped, failed, total_cost = 0, 0, 0, 0.0
 
-    With out_dir, each valid draft is written to <out_dir>/<group_key>.json
-    the moment it passes - not at the end - so a crash later loses nothing.
-    """
-    valid, failed = {}, {}
     for group_key, paths in groups.items():
-        print(f"\n{group_key} ({len(paths)} photo{'s' if len(paths) > 1 else ''})")
-        draft, error = extract_group(client, group_key, paths)
-        if draft is not None:
-            valid[group_key] = draft
-            print(f"  valid - {draft.title}")
-            if out_dir is not None:
-                out_path = Path(out_dir) / f"{group_key}.json"
-                # model_dump_json turns the enums back into plain strings ("taupe").
-                out_path.write_text(draft.model_dump_json(indent=2), encoding="utf-8")
-                print(f"  wrote {out_path}")
-        else:
-            failed[group_key] = error
-            print(f"  FAILED - recorded, moving on")
+        current_hash = photos_hash(paths)
 
-    print(f"\n{len(groups)} groups | {len(valid)} valid | {len(failed)} failed")
-    for group_key, error in failed.items():
-        print(f"  {group_key}: {error.splitlines()[0].strip()}")
-    return valid, failed
+        # W04-D4: check the database first.
+        row = get_product(con, group_key)
+        if row and row["status"] in ("extracted", "pushed") and row["photo_hash"] == current_hash:
+            skipped += 1
+            print(f"{group_key}: skipped (already {row['status']})")
+            continue
+
+        why = "new" if row is None else f"was {row['status']}"
+        if row and row["photo_hash"] != current_hash and row["status"] != "failed":
+            why = "photos changed"
+        print(f"\n{group_key} ({len(paths)} photo{'s' if len(paths) > 1 else ''}, {why})")
+
+        draft, error, cost_usd = extract_group(client, group_key, paths)
+        total_cost += cost_usd
+
+        # Write the row straight away - success or failure - with what it cost.
+        if draft is not None:
+            new += 1
+            save_product(con, group_key, "extracted", draft, photo_hash=current_hash,
+                         model_used=MODEL, cost_usd=cost_usd)
+            print(f"  valid - {draft.title}  (${cost_usd:.4f})")
+        else:
+            failed += 1
+            save_product(con, group_key, "failed", photo_hash=current_hash,
+                         model_used=MODEL, cost_usd=cost_usd, error=error)
+            print(f"  FAILED - saved as failed, moving on  (${cost_usd:.4f})")
+
+    print(f"\n{new} new | {skipped} skipped | {failed} failed | ${total_cost:.2f}")
+    return {"new": new, "skipped": skipped, "failed": failed, "cost_usd": total_cost}
 
 
 def main():
@@ -144,7 +175,7 @@ def main():
                         help="photo folder (default: photos)")
     parser.add_argument("--limit", type=int, default=None,
                         help="only process the first N groups")
-    parser.add_argument("--out", default="out", help="output folder (default: out)")
+    parser.add_argument("--db", default="catalog.db", help="database file (default: catalog.db)")
     args = parser.parse_args()
 
     if not Path(args.folder).is_dir():
@@ -159,8 +190,11 @@ def main():
         # Groups are sorted by key, so --limit 10 always means the same first ten.
         groups = dict(list(groups.items())[:args.limit])
 
-    Path(args.out).mkdir(exist_ok=True)
-    run(anthropic.Anthropic(), groups, out_dir=args.out)
+    con = connect(args.db)
+    try:
+        run(anthropic.Anthropic(), groups, con)
+    finally:
+        con.close()
 
 
 if __name__ == "__main__":

@@ -32,8 +32,9 @@ load_dotenv()
 if not os.getenv("ANTHROPIC_API_KEY"):
     raise SystemExit("ANTHROPIC_API_KEY is not set. Check your .env file.")
 
-draft, error = extract_group(anthropic.Anthropic(), image_path, [image_path])
+draft, error, cost_usd = extract_group(anthropic.Anthropic(), image_path, [image_path])
 if draft is None:
     raise SystemExit(f"Failed after two attempts:\n{error}")
 
 print(draft.model_dump_json(indent=2))
+print(f"cost: ${cost_usd:.4f}")
