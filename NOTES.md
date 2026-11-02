@@ -277,3 +277,27 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
   - `CREATE TABLE IF NOT EXISTS` → running `catalog.py` twice is safe.
   - Constraint tests ran in `sqlite3.connect(":memory:")` — a throwaway database in
     RAM — so the real catalog.db stayed empty.
+
+- **W04·D3 `group_key UNIQUE` + upsert (`save_product` in catalog.py).**
+  - `UNIQUE` = the database refuses a second row with the same key:
+    `IntegrityError: UNIQUE constraint failed: products.group_key`.
+  - **Changing a table that already exists:** `CREATE TABLE IF NOT EXISTS` does
+    nothing if the table is there, so adding UNIQUE to the code changed nothing in
+    catalog.db. The table was empty, so I dropped it and let `connect()` recreate it.
+    With real data that would be a *migration* — copy the rows into a new table. Do
+    schema changes while tables are empty.
+  - **Upsert** = `INSERT ... ON CONFLICT (group_key) DO UPDATE SET col = excluded.col`.
+    `excluded` = the row I just tried to insert. One statement, no "does it exist?"
+    check first. The SET list leaves out `id`, `created_at` and
+    `shopify_product_id` on purpose — an update must never forget where the bag was
+    pushed.
+  - **Placeholders (`:title`, `?`), never pasted values.** sqlite3 fills them in
+    safely. Pasting text into SQL breaks on the first apostrophe ("women's tote") and
+    is how SQL injection happens. The test description contains an apostrophe on purpose.
+  - `test_catalog.py` (in-memory DB): same group written twice → 1 row, second
+    write's values, same id, same created_at, shopify id kept, lists come back as lists.
+    A failed bag still gets a row with `status='failed'` and its error.
+  - Gotcha: pydantic's `model_copy(update=...)` **skips validation** → serializer
+    warning about `size`. Build changed drafts with `model_validate` instead.
+  - Current behaviour: re-saving a bag as *failed* wipes its old content (row = latest
+    attempt). Revisit in W04·D4 if that turns out wrong.
