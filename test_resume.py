@@ -46,7 +46,7 @@ assert get_product(con, "bag-203") is None         # the interrupted one left no
 print("\n=== restart ===")
 restart = FakeClient([GOOD, GOOD])
 summary = run(restart, groups, con)
-assert summary == {"new": 2, "skipped": 2, "failed": 0, "cost_usd": 0.015}, summary
+assert {k: summary[k] for k in ("new", "skipped", "failed", "cost_usd")} == {"new": 2, "skipped": 2, "failed": 0, "cost_usd": 0.015}, summary
 assert len(restart.calls) == 2
 
 print("\nAll resume checks passed.")

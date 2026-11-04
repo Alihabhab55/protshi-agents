@@ -15,3 +15,6 @@ photos/
 
 # Generated listings (regenerate with extract.py)
 out/
+
+# Unsorted photos waiting to be grouped (rename_photos.py)
+photos_inbox/

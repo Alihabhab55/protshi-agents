@@ -32,7 +32,7 @@ assert abs(get_product(con, "bag-102")["cost_usd"] - 0.0150) < 1e-9
 print("\n--- second run ---")
 client_2 = FakeClient([GOOD])
 summary_2 = run(client_2, groups, con)
-assert summary_2 == {"new": 1, "skipped": 3, "failed": 0, "cost_usd": 0.0075}, summary_2
+assert {k: summary_2[k] for k in ("new", "skipped", "failed", "cost_usd")} == {"new": 1, "skipped": 3, "failed": 0, "cost_usd": 0.0075}, summary_2
 assert len(client_2.calls) == 1                      # only bag-103
 assert get_product(con, "bag-103")["status"] == "extracted"
 

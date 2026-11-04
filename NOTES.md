@@ -344,3 +344,20 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
     003–004 → `3 new | 1 skipped | 0 failed | $0.08`. Resumed, didn't start over. ✅
     Caveat: bag-002's interrupted request may still have been billed if Anthropic had
     already started it — an interrupted call can cost money without saving anything.
+
+- **W04·D6 prep — 104 new photos, all with camera names (`IMG_1804.JPG.jpeg` …,
+  97 jpeg + 7 PNG, largest 0.5 MB, no byte-for-byte duplicates).** Looked at three:
+  IMG_1924 and IMG_1925 are the *same* black tote (detail + side), IMG_1928 is a
+  different bag. So one photo ≠ one bag, and the filenames don't say which is which.
+  Running them as 104 one-photo bags would cost ≈ $2.40 for wrong products. **Grouping
+  is my decision, not the code's or a model's** (W03·D1 rule).
+  - Moved the 104 into `photos_inbox/` (ignored by git); `photos/` keeps only
+    `bag-NNN_N` files.
+  - `rename_photos.py`: one **subfolder per bag** in the inbox → next free `bag-NNN`,
+    photos `_1, _2…` in filename order (first = main photo). **Dry run by default**;
+    `--apply` copies (inbox originals stay) and appends old→new to `rename_log.csv`.
+    Skips with a reason: loose files, unsupported types, files over 5 MB, and photos
+    identical to one already in `photos/` (so `--apply` twice is harmless).
+  - `extract.py` now shows `[n/total]` and the elapsed time on the summary line.
+    Its timer starts inside `run()`, so it excludes Python start-up (~1.5 s) —
+    `Measure-Command` gives the full wall-clock number.

@@ -9,6 +9,7 @@ import hashlib
 import json
 import mimetypes
 import os
+import time
 from pathlib import Path
 
 import anthropic
@@ -133,21 +134,24 @@ def extract_group(client, group_key, paths):
 def run(client, groups, con):
     """Extract every group into the database. One group failing never stops the others."""
     new, skipped, failed, total_cost = 0, 0, 0, 0.0
+    started = time.perf_counter()          # a stopwatch: seconds since some fixed point
+    width = len(str(len(groups)))
 
-    for group_key, paths in groups.items():
+    for n, (group_key, paths) in enumerate(groups.items(), start=1):
+        progress = f"[{n:>{width}}/{len(groups)}]"
         current_hash = photos_hash(paths)
 
         # W04-D4: check the database first.
         row = get_product(con, group_key)
         if row and row["status"] in ("extracted", "pushed") and row["photo_hash"] == current_hash:
             skipped += 1
-            print(f"{group_key}: skipped (already {row['status']})")
+            print(f"{progress} {group_key}: skipped (already {row['status']})")
             continue
 
         why = "new" if row is None else f"was {row['status']}"
         if row and row["photo_hash"] != current_hash and row["status"] != "failed":
             why = "photos changed"
-        print(f"\n{group_key} ({len(paths)} photo{'s' if len(paths) > 1 else ''}, {why})")
+        print(f"\n{progress} {group_key} ({len(paths)} photo{'s' if len(paths) > 1 else ''}, {why})")
 
         # W04-D5: each bag gets its own try/except. Anything unexpected for THIS bag
         # (network down, server error, unreadable photo) becomes a failed row, and the
@@ -176,8 +180,12 @@ def run(client, groups, con):
                          model_used=MODEL, cost_usd=cost_usd, error=error)
             print(f"  FAILED - saved as failed, moving on  (${cost_usd:.4f})")
 
-    print(f"\n{new} new | {skipped} skipped | {failed} failed | ${total_cost:.2f}")
-    return {"new": new, "skipped": skipped, "failed": failed, "cost_usd": total_cost}
+    elapsed = time.perf_counter() - started
+    minutes, seconds = divmod(elapsed, 60)
+    print(f"\n{new} new | {skipped} skipped | {failed} failed | ${total_cost:.2f} "
+          f"| {int(minutes)}m {seconds:.1f}s")
+    return {"new": new, "skipped": skipped, "failed": failed, "cost_usd": total_cost,
+            "seconds": elapsed}
 
 
 def main():
