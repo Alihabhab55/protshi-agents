@@ -320,3 +320,21 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
   - Real run 1: `4 new | 0 skipped | 0 failed | $0.10` (sum in db: $0.1021).
   - Real run 2: `0 new | 4 skipped | 0 failed | $0.00` in 1.7 s, **zero model calls**.
   - Cost per bag: ≈ $0.023 for one photo, $0.030 for two.
+
+- **W04·D5 survive failure and interruption.**
+  - **Each bag has its own try/except** around `extract_group`. Any `Exception` for
+    that bag (network down, 5xx, unreadable photo) → row saved as `failed` with
+    `"ConnectionError: network down"` in `error`, and the loop moves on.
+  - **Except a bad key** (401 `AuthenticationError`, 403 `PermissionDeniedError`):
+    it would fail every bag identically, so the run stops with one clear line instead
+    of writing 104 identical failures. That's what happened with the revoked key.
+  - **Ctrl+C is `KeyboardInterrupt`, which is *not* an `Exception`** (it's a
+    `BaseException`), so `except Exception` doesn't swallow it — Ctrl+C still stops
+    the run. `main()` catches it only to print "Interrupted. Finished bags are saved".
+  - **Commit after each bag** was already true: `save_product` commits inside. So a
+    finished bag is on disk before the next one starts; the interrupted bag leaves no
+    half-written row and is simply extracted on the next run.
+  - Cost of attempts made before an exception is lost (recorded as $0.00). Small, noted.
+  - `test_resume.py` (fake model, in-memory DB): network error on bag 2 → 3 new / 1
+    failed; Ctrl+C on bag 3 → bags 1–2 saved, no row for 3; restart → 2 skipped, 2 new,
+    exactly 2 calls. Shared fake moved to `fakes.py` (importing a test file re-ran it).

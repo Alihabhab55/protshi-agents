@@ -1,4 +1,4 @@
-"""W03-D4 to W04-D4 - extract every bag group into catalog.db, skipping work already done.
+"""W03-D4 to W04-D5 - extract every bag group into catalog.db; skip done work, survive failures.
 
 Run:  python extract.py --limit 10
 """
@@ -149,10 +149,22 @@ def run(client, groups, con):
             why = "photos changed"
         print(f"\n{group_key} ({len(paths)} photo{'s' if len(paths) > 1 else ''}, {why})")
 
-        draft, error, cost_usd = extract_group(client, group_key, paths)
+        # W04-D5: each bag gets its own try/except. Anything unexpected for THIS bag
+        # (network down, server error, unreadable photo) becomes a failed row, and the
+        # loop moves on. Ctrl+C is not an Exception (it's KeyboardInterrupt), so it is
+        # NOT caught here - pressing it still stops the run.
+        try:
+            draft, error, cost_usd = extract_group(client, group_key, paths)
+        except (anthropic.AuthenticationError, anthropic.PermissionDeniedError):
+            # A bad key fails every bag the same way - stop instead of failing them all.
+            raise
+        except Exception as e:
+            draft, error, cost_usd = None, f"{type(e).__name__}: {e}", 0.0
+            print(f"  error: {error}")
         total_cost += cost_usd
 
         # Write the row straight away - success or failure - with what it cost.
+        # save_product commits inside, so this bag is safe on disk before the next starts.
         if draft is not None:
             new += 1
             save_product(con, group_key, "extracted", draft, photo_hash=current_hash,
@@ -193,6 +205,13 @@ def main():
     con = connect(args.db)
     try:
         run(anthropic.Anthropic(), groups, con)
+    except KeyboardInterrupt:
+        # Ctrl+C: every finished bag is already committed. Nothing to clean up.
+        raise SystemExit("\nInterrupted. Finished bags are saved - run again to continue.")
+    except anthropic.AuthenticationError:
+        raise SystemExit("\nThe API key was rejected (401). Check ANTHROPIC_API_KEY in .env.")
+    except anthropic.PermissionDeniedError as e:
+        raise SystemExit(f"\nThe API refused this key (403): {e.message}")
     finally:
         con.close()
 
