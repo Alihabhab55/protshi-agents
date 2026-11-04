@@ -18,3 +18,4 @@ out/
 
 # Unsorted photos waiting to be grouped (rename_photos.py)
 photos_inbox/
+photos_inbox_backup/

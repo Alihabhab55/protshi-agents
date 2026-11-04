@@ -361,3 +361,38 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
   - `extract.py` now shows `[n/total]` and the elapsed time on the summary line.
     Its timer starts inside `run()`, so it excludes Python start-up (~1.5 s) —
     `Measure-Command` gives the full wall-clock number.
+
+- **W04·D6 full batch — 104 new photos sorted into 22 bags (bag-005 … bag-026).**
+  Sorted one folder per bag *model*, colours together; I checked the three uncertain
+  ones (bag-007 white+black clutch, bag-016 incl. IMG_2014, bag-023 alone) — all right.
+  `rename_photos.py --apply` → 104 copied, old→new in `rename_log.csv`. Originals in
+  `photos_inbox/`, plus a full copy in `photos_inbox_backup/` (both ignored by git).
+  ⚠️ The originals were *moved* out of Google Drive, not copied — no cloud backup yet.
+
+  **The numbers to quote** (claude-opus-5, effort low, 5 Nov 2026):
+
+  | | |
+  |---|---|
+  | Catalog | 26 bags, 109 photos (1–12 photos per bag) |
+  | New this batch | 22 bags, 104 photos |
+  | Result | 22 / 22 extracted (4 after a fix, 1 needed a retry) |
+  | Cost, 22 new bags | **$1.26** → **$0.057 per bag** (≈ $0.012 per photo) |
+  | Cost, whole catalog | $1.36 for 26 bags, avg $0.052, max $0.215 (bag-022) |
+  | Wall-clock, 22 bags | ≈ 2 min 35 s (2m 01s + 34s) → **≈ 7 s per bag** |
+  | Second run | `0 new | 26 skipped | 0 failed | $0.00` in **1.65 s** ✅ |
+
+  - **7 files named `.PNG` were really JPEGs.** The code took the type from the
+    extension; the API checks the bytes → `400 ... specified using the image/png media
+    type, but the image appears to be a image/jpeg image`. 4 bags failed, the run
+    carried on (W04·D5 working), cost $0.00. Fix: `images.py` reads the type from the
+    file's first bytes (JPEG starts `FF D8 FF`, PNG `89 50 4E 47`); `extract.py` and
+    `rename_photos.py` use it. Renamed the 7 to `.jpg`; rerun → only the 4 failed bags
+    were extracted.
+  - **A real retry:** bag-022 attempt 1 said `colours: ["champagne"]` (not in the
+    enum) → error sent back → attempt 2 valid. Cost $0.215 — 12 photos sent twice.
+    Many photos × a retry = the expensive case.
+  - Cost grows with photos, not bags: 1 photo ≈ $0.023, 4 ≈ $0.045, 12 ≈ $0.10.
+  - **The colours field is still ambiguous** (open since W03·D5): hardware and trim
+    get counted as colours — bag-007 `white, silver, black`, bag-009 `black, silver`,
+    bag-024 `beige, khaki, taupe` for one canvas tote. Fix in W08·D5.
+  - Week 4 acceptance: second run `0 new | 26 skipped | $0.00` under two seconds ✅

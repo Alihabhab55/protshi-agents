@@ -22,6 +22,7 @@ import shutil
 from pathlib import Path
 
 from group_photos import PHOTO_NAME, group_photos
+from images import extension_for, media_type_of
 
 ALLOWED = {".jpg": ".jpg", ".jpeg": ".jpg", ".png": ".png", ".webp": ".webp"}
 MAX_BYTES = 5 * 1024 * 1024      # the API's per-image limit
@@ -53,11 +54,15 @@ def build_plan(inbox, photos_dir):
         bag_key = f"bag-{number:03d}"
         files = []
         for src in sorted(p for p in folder.iterdir() if p.is_file()):
-            # .JPG.jpeg -> the LAST extension decides, like mimetypes does.
-            ext = ALLOWED.get(src.suffix.lower())
-            if ext is None:
-                problems.append(f"{folder.name}/{src.name}: {src.suffix} not supported - skipped")
+            # The file's bytes decide the type, not its name: some ".PNG" photos are JPEGs.
+            media_type = media_type_of(src)
+            if media_type is None:
+                problems.append(f"{folder.name}/{src.name}: not a JPEG/PNG/GIF/WebP image - skipped")
                 continue
+            ext = extension_for(media_type)
+            if ext != ALLOWED.get(src.suffix.lower()):
+                problems.append(f"{folder.name}/{src.name}: named {src.suffix} but really "
+                                f"{media_type} - saved as {ext}")
             if src.stat().st_size > MAX_BYTES:
                 problems.append(f"{folder.name}/{src.name}: over 5 MB - skipped")
                 continue

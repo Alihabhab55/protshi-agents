@@ -7,7 +7,6 @@ import argparse
 import base64
 import hashlib
 import json
-import mimetypes
 import os
 import time
 from pathlib import Path
@@ -18,6 +17,7 @@ from pydantic import ValidationError
 
 from catalog import connect, get_product, save_product
 from group_photos import group_photos
+from images import media_type_of
 from schema import ProductDraft
 
 MODEL = "claude-opus-5"
@@ -39,8 +39,10 @@ SAVE_TOOL = {
 
 
 def image_block(path):
-    """One photo as a base64 image content block."""
-    media_type, _ = mimetypes.guess_type(path)
+    """One photo as a base64 image content block. The type comes from the bytes."""
+    media_type = media_type_of(path)
+    if media_type is None:
+        raise ValueError(f"{path} is not a JPEG, PNG, GIF or WebP image")
     with open(path, "rb") as f:
         data = base64.standard_b64encode(f.read()).decode("utf-8")
     return {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data}}
