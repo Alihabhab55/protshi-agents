@@ -301,3 +301,22 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
     warning about `size`. Build changed drafts with `model_validate` instead.
   - Current behaviour: re-saving a bag as *failed* wipes its old content (row = latest
     attempt). Revisit in W04·D4 if that turns out wrong.
+
+- **Old API key → `AuthenticationError` 401 `invalid x-api-key`.** `.env` hadn't
+  changed since 30 Sep, no Windows env var was overriding it, format was fine — the key
+  itself had been revoked (most likely during the account review). Fixed with a new key
+  from the Console. **Credits belong to the account, not the key** — the $5 carried
+  over. A 401 is checked before billing, so it says nothing about credits.
+  The crash also showed an API error still kills the whole run → W04·D5.
+
+- **W04·D4 check the database first, skip what's done.** For each group:
+  `get_product()` → if status is `extracted`/`pushed` **and** `photo_hash` matches →
+  skip, no API call. Otherwise extract, validate, `save_product()` with `cost_usd`
+  (all attempts added up — a retry is paid for too). Failed bags are retried next run;
+  a replaced photo changes the hash → extracted again. JSON files in `out/` dropped —
+  the database is the one record now.
+  - Fake-model test (`test_retry.py`): run 1 → 6 calls; run 2 → 1 call (only the
+    failed bag); run 3 → **0 calls**; swapped photo → 1 call.
+  - Real run 1: `4 new | 0 skipped | 0 failed | $0.10` (sum in db: $0.1021).
+  - Real run 2: `0 new | 4 skipped | 0 failed | $0.00` in 1.7 s, **zero model calls**.
+  - Cost per bag: ≈ $0.023 for one photo, $0.030 for two.
