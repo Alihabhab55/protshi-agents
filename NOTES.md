@@ -338,3 +338,9 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
   - `test_resume.py` (fake model, in-memory DB): network error on bag 2 → 3 new / 1
     failed; Ctrl+C on bag 3 → bags 1–2 saved, no row for 3; restart → 2 skipped, 2 new,
     exactly 2 calls. Shared fake moved to `fakes.py` (importing a test file re-ran it).
+  - **Real Ctrl+C test** (`--db resume_test.db`, deleted afterwards): pressed Ctrl+C
+    while bag-002 was being extracted → "Interrupted. Finished bags are saved". Restart
+    → `bag-001: skipped`, bag-002 extracted from scratch (no half row was left), then
+    003–004 → `3 new | 1 skipped | 0 failed | $0.08`. Resumed, didn't start over. ✅
+    Caveat: bag-002's interrupted request may still have been billed if Anthropic had
+    already started it — an interrupted call can cost money without saving anything.
