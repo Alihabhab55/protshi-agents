@@ -452,3 +452,20 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
   - `�` in the printed description: the Windows terminal can't show some characters
     (an em dash, a non-breaking space). Display only — the data is fine. Will matter for
     Arabic in week 10 (fix: `PYTHONIOENCODING=utf-8`).
+
+- **W05·D3 first write — one hardcoded draft.** `shopify_create_one.py` →
+  `productCreate` mutation → `gid://shopify/Product/16072089829662`,
+  "TEST - Protshi agent draft - delete me", status `DRAFT`, 1 variant at `0.00`.
+  - **A mutation is a GraphQL write**; values go in `variables` (`$product`), never
+    pasted into the query text — same idea as SQL placeholders.
+  - `productCreate` always makes exactly **one initial variant**, price `0.00` by
+    default. More variants (colours) need `productVariantsBulkCreate` or `productSet`.
+  - New products are **unpublished** (no sales channel) as well as DRAFT — invisible
+    to customers twice over.
+  - The plan expected **201 Created** (REST). GraphQL answers **200** for everything;
+    success is read from the body.
+  - **Three layers of "did it work?"** for a GraphQL mutation:
+    1. HTTP status 200 (else: network/auth/address problem)
+    2. no top-level `errors` (else: the query itself is broken)
+    3. empty `userErrors` (else: Shopify understood but refused the *change*)
+  - Every run creates a **new** product. No duplicate protection until W05·D5.
