@@ -419,3 +419,36 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
     `write_products` because write access includes read access.
   - **Least privilege:** only product scopes. If these credentials leak, customers'
     names, phones and addresses are still out of reach.
+
+- **W05·D2 read one product — switched to the GraphQL Admin API** (REST is legacy;
+  product REST resources deprecated since 2024-04). `shopify_api.py` holds all Shopify
+  code (token, `graphql()`, `check()`), like catalog.py holds all SQL.
+  `python shopify_read.py` → **200, no `errors`** — read access works (write includes read).
+  - **GraphQL always uses POST**, even to read: the query travels in the body. One
+    address for everything: `/admin/api/2026-10/graphql.json`.
+  - **GraphQL can fail inside a 200** — a bad field name gives 200 +
+    `{"errors": [...]}`. "Done" = status 200 **and** no `errors`. `check()` tests both.
+  - You get only the fields you ask for. Cost of this query: 17 points out of a
+    2,000-point bucket that refills 100 points/second (`extensions.cost`).
+  - **Shape of a product, and what W05·D3 must send:**
+
+    | Field | Example | Note |
+    |---|---|---|
+    | `id` | `gid://shopify/Product/8937253732638` | **text**, not a number → `shopify_product_id` column should be TEXT (W05·D5) |
+    | `title` | `Emma Heels` | |
+    | `status` | `ARCHIVED` | GraphQL uses UPPERCASE: ACTIVE / DRAFT / ARCHIVED. Ours: always `DRAFT` |
+    | `descriptionHtml` | `<p>...</p><ul><li>...` | HTML, not plain text |
+    | `productType` | `""` | empty — the store doesn't use it |
+    | `vendor` | `Protshi Garments` | |
+    | `tags` | `["all", "Collection Beta", "heels"]` | **a list** in GraphQL (REST used one string) — matches ours |
+    | `options` | Color [Black, Pink], Size [36–40], Heel [7cm, 9cm] | **how the store models colours** |
+    | `variants.nodes[].price` | `"25.00"` | price lives on the **variant**, as a string |
+    | `variants.nodes[].sku` | `9B4A8147` | |
+    | `media.nodes[].image.url` | `https://cdn.shopify.com/...` | |
+
+  - **The store already does colours as variants:** a `Color` option, and one variant
+    per combination (`Black / 36 / 7cm`). That answers the W03·D2 question — our
+    `colours` list maps naturally to a Color option.
+  - `�` in the printed description: the Windows terminal can't show some characters
+    (an em dash, a non-breaking space). Display only — the data is fine. Will matter for
+    Arabic in week 10 (fix: `PYTHONIOENCODING=utf-8`).
