@@ -510,3 +510,23 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
   - Open: if a pushed bag's photos change, `extract.py` re-extracts it (status back
     to `extracted`, id kept) but the Shopify product isn't updated. A push that
     *updates* existing products is future work.
+
+- **W05·D6 dry run is the default.** `push.py` with no flag prints the exact
+  `ProductCreateInput` and the photo list (in order, with their real type) and sends
+  **nothing** — it doesn't even request a token. `--confirm` pushes for real;
+  `--dry-run` is accepted but changes nothing (it's already the default); the two
+  can't be combined (argparse mutually exclusive group). No group keys = every bag that
+  is `extracted` with no Shopify id, sorted, so `--limit 1` is always the same next bag.
+  - **Proved, not claimed:** `test_push_dryrun.py` replaces `requests.post/put/get`
+    with a function that fails the test, then runs three dry runs → no network call,
+    catalog.db byte-for-byte unchanged.
+  - `push.py --limit 1 --confirm` → bag-001 created, `gid://shopify/Product/16072112472350`,
+    DRAFT, 0.00, 1 photo READY. The next dry run moved on to bag-003.
+- **Week 5 acceptance:**
+  - D1 token: HTTP 200, scope `write_products` (includes read); `.env` ignored, in 0
+    commits ✅
+  - D2 read one product: 200, no errors ✅
+  - D3/D4 drafts at 0.00 with photos in order ✅ (TEST product, bag-002, bag-001)
+  - D5 `push.py bag-001 bag-002 --confirm` → both "already pushed", nothing created ✅
+  - D6 `push.py --limit 1` sends nothing; only `--confirm` creates ✅
+  - catalog.db: 24 extracted, 2 pushed. All test files pass.
