@@ -469,3 +469,22 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
     2. no top-level `errors` (else: the query itself is broken)
     3. empty `userErrors` (else: Shopify understood but refused the *change*)
   - Every run creates a **new** product. No duplicate protection until W05·D5.
+
+- **W05·D4 photos — not base64 in the request (that was REST).** GraphQL does it in
+  three steps, in `shopify_api.upload_image` + `push.py`:
+  1. `stagedUploadsCreate` (resource `IMAGE`, `httpMethod: PUT`) → an upload slot:
+     `url`, `resourceUrl`, and `parameters` (headers to send along)
+  2. `PUT` the file's bytes to `url` — straight to Shopify's storage, not via the API
+  3. `productCreate(product, media=[{originalSource: resourceUrl, ...}])` — **the order
+     of the media list is the photo order**, so `_1` is the main photo.
+  Shopify then processes photos in the background (UPLOADED → PROCESSING → READY);
+  `push.py` polls until all are READY or FAILED, max 30 s.
+  - **429 handling** in `shopify_api.graphql`: Shopify says "slow down" as HTTP 429
+    *or* as a 200 with `errors[].extensions.code == "THROTTLED"`. Either way: wait
+    `Retry-After` seconds (else 2, 4, 8 — backing off) and retry, max 4 attempts.
+    Plus a 1 s `PAUSE_SECONDS` between products.
+  - Description goes through `html.escape()` before `<p>…</p>` — a `<` or `&` in a
+    description would otherwise break the HTML.
+  - Also sent: SEO title + description (`seo`), alt text on every photo.
+  - Pushed **bag-002** (2 photos): `gid://shopify/Product/16072100905246`, DRAFT, 0.00,
+    photos `bag-002_1.jpg`, `bag-002_2.jpg` in that order, both READY.
