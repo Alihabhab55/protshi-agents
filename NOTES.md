@@ -396,3 +396,26 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
     get counted as colours — bag-007 `white, silver, black`, bag-009 `black, silver`,
     bag-024 `beige, khaki, taupe` for one canvas tote. Fix in W08·D5.
   - Week 4 acceptance: second run `0 new | 26 skipped | $0.00` under two seconds ✅
+
+## Week 5 — Shopify push
+
+- **W05·D1 Shopify app — the plan's method no longer exists.** Since 1 Jan 2026
+  Shopify doesn't let you create new custom apps under *Settings → Apps → Develop apps*,
+  and new apps never show a `shpat_` token. Instead:
+  - Created `protshi-agents` in the **Dev Dashboard** (dev.shopify.com), scopes
+    `read_products,write_products` only, App URL left as `https://example.com`, embed
+    unticked. Version `v1-products-only` released → **Overview → Install app** → PROTSHI.
+  - After install Shopify opened `example.com` — that's just the placeholder App URL;
+    the app has no screens. Harmless.
+  - `.env` gets `SHOPIFY_STORE_DOMAIN`, `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET`;
+    the names (no values) are in `.env.example`.
+  - The code trades ID + secret for a token: `POST https://<store>/admin/oauth/access_token`
+    with `grant_type=client_credentials` → token valid **24 h** (`expires_in: 86399`).
+    Only works because app and store are in the same organization.
+  - **Gotcha: the store domain is the *handle*, not the shop name.** The admin URL
+    `admin.shopify.com/store/protshi-2` → `protshi-2.myshopify.com`. With the placeholder
+    domain Shopify answered `404 Store unavailable` — a wrong address, not wrong secrets.
+  - Test: HTTP 200, `scope granted: write_products`, token received. Shopify lists only
+    `write_products` because write access includes read access.
+  - **Least privilege:** only product scopes. If these credentials leak, customers'
+    names, phones and addresses are still out of reach.
