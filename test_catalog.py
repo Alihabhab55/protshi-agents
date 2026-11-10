@@ -28,7 +28,7 @@ row_1 = get_product(con, "bag-014")
 print("after write 1:", row_1["id"], row_1["title"], row_1["size"], row_1["colours"])
 
 # Pretend week 5 pushed it, so we can prove the update leaves this alone.
-con.execute("UPDATE products SET shopify_product_id = 777 WHERE group_key = 'bag-014'")
+con.execute("UPDATE products SET shopify_product_id = 'gid://shopify/Product/777' WHERE group_key = 'bag-014'")
 con.commit()
 
 save_product(con, "bag-014", "extracted", second, cost_usd=0.025, model_used="claude-opus-5")
@@ -43,7 +43,7 @@ assert row_2["title"] == "Braided Quilt Mini Tote"   # the second write's values
 assert row_2["size"] == "mini" and row_2["cost_usd"] == 0.025
 assert row_2["id"] == row_1["id"]                    # same row, updated in place
 assert row_2["created_at"] == row_1["created_at"]    # birth date kept
-assert row_2["shopify_product_id"] == 777            # never forgotten by an update
+assert row_2["shopify_product_id"] == "gid://shopify/Product/777"  # never forgotten
 assert row_2["colours"] == ["black"]                 # JSON text came back as a list
 assert row_2["description"] == "A women's quilted tote."
 

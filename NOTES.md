@@ -488,3 +488,25 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
   - Also sent: SEO title + description (`seo`), alt text on every photo.
   - Pushed **bag-002** (2 photos): `gid://shopify/Product/16072100905246`, DRAFT, 0.00,
     photos `bag-002_1.jpg`, `bag-002_2.jpg` in that order, both READY.
+
+- **W05·D5 remember what was pushed.**
+  - **Migration:** `shopify_product_id` INTEGER → TEXT (GraphQL ids are
+    `gid://shopify/Product/...`). SQLite can't change a column type in place, so
+    `catalog._migrate_shopify_id_to_text` builds `products_new`, copies every row,
+    drops the old table, renames — **inside one transaction** (all or nothing), and
+    only if the column is still INTEGER (safe to run every connect). Tested on a copy
+    first: 26 rows identical, UNIQUE still enforced. Backup kept as
+    `catalog.before-w05d5.db`.
+  - `catalog.mark_pushed()` sets `status='pushed'` + the Shopify id, committed at once.
+  - `push.py` checks the database first: a bag with a `shopify_product_id` is
+    skipped. Saved **immediately** after `productCreate` — the gap between "Shopify
+    created it" and "we wrote it down" is the only place a crash could still cause
+    a duplicate.
+  - bag-002 was pushed in W05·D4 before anything recorded it → backfilled by hand.
+  - Re-run `push.py bag-002` → `already pushed ... - nothing to push`. Asked Shopify
+    directly: **1** product with that title. ✅
+  - `test_catalog.py` failed after the migration: it stored `777` and got back
+    `'777'` — the TEXT column turned the number into text. Test now uses a gid.
+  - Open: if a pushed bag's photos change, `extract.py` re-extracts it (status back
+    to `extracted`, id kept) but the Shopify product isn't updated. A push that
+    *updates* existing products is future work.

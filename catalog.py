@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS products (
     error               TEXT,                      -- why it failed, if it did
     created_at          TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    shopify_product_id  INTEGER                    -- filled in week 5
+    shopify_product_id  TEXT                       -- "gid://shopify/Product/..." (W05-D5)
 )
 """
 
@@ -71,12 +71,38 @@ ON CONFLICT (group_key) DO UPDATE SET
 # and shopify_product_id (an update must never forget where the bag was pushed).
 
 
+def _migrate_shopify_id_to_text(con):
+    """W05-D5 migration: shopify_product_id INTEGER -> TEXT, keeping every row.
+
+    SQLite can't change a column's type in place, so: build a new table with the
+    right types, copy every row across, drop the old one, rename the new one.
+    All inside one transaction - if any step fails, nothing has changed.
+    """
+    types = {row[1]: row[2] for row in con.execute("PRAGMA table_info(products)")}
+    if types.get("shopify_product_id") != "INTEGER":
+        return                              # already TEXT (or a fresh table): nothing to do
+
+    con.execute("BEGIN")
+    try:
+        con.execute(CREATE_PRODUCTS.replace("CREATE TABLE IF NOT EXISTS products",
+                                            "CREATE TABLE products_new"))
+        con.execute("INSERT INTO products_new SELECT * FROM products")
+        con.execute("DROP TABLE products")
+        con.execute("ALTER TABLE products_new RENAME TO products")
+        con.commit()
+    except Exception:
+        con.rollback()
+        raise
+    print("catalog.db: migrated shopify_product_id to TEXT")
+
+
 def connect(path=DB_PATH):
-    """Open the database and make sure the tables exist."""
+    """Open the database and make sure the tables exist (and are up to date)."""
     con = sqlite3.connect(path)
     con.row_factory = sqlite3.Row      # rows can be read by column name: row["title"]
     con.execute(CREATE_PRODUCTS)
     con.commit()
+    _migrate_shopify_id_to_text(con)
     return con
 
 
@@ -93,6 +119,16 @@ def save_product(con, group_key, status, draft=None, *, photo_hash=None,
     values.update(group_key=group_key, status=status, photo_hash=photo_hash,
                   model_used=model_used, cost_usd=cost_usd, error=error)
     con.execute(UPSERT_PRODUCT, values)
+    con.commit()
+
+
+def mark_pushed(con, group_key, shopify_product_id):
+    """W05-D5: remember where this bag went. Committed at once, like save_product."""
+    con.execute(
+        "UPDATE products SET status = 'pushed', shopify_product_id = ?, "
+        "updated_at = CURRENT_TIMESTAMP WHERE group_key = ?",
+        (shopify_product_id, group_key),
+    )
     con.commit()
 
 

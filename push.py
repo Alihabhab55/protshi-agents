@@ -1,6 +1,6 @@
-"""W05-D4 - push one extracted bag to Shopify as a draft, with all its photos in order.
+"""W05-D4/D5 - push extracted bags to Shopify as a draft, with all its photos in order.
 
-Every run creates a NEW product - no duplicate check yet (that's W05-D5).
+Bags that already have a shopify_product_id are skipped - pushing twice creates nothing.
 Run:  python push.py bag-002
 """
 
@@ -8,7 +8,7 @@ import argparse
 import html
 import time
 
-from catalog import connect, get_product
+from catalog import connect, get_product, mark_pushed
 from group_photos import group_photos
 from images import media_type_of
 from shopify_api import check, get_token, graphql, upload_image
@@ -96,15 +96,28 @@ def main():
     photos = group_photos("photos")
     token = get_token()
 
-    for i, group_key in enumerate(args.groups):
+    pushed = 0
+    for group_key in args.groups:
         row = get_product(con, group_key)
+        # W05-D5: check the database first. A Shopify id means it's already there -
+        # pushing again would create a duplicate product.
+        if row and row["shopify_product_id"]:
+            print(f"{group_key}: already pushed as {row['shopify_product_id']} - nothing to push")
+            continue
         if row is None or row["status"] != "extracted":
             print(f"{group_key}: not extracted - skipped")
             continue
-        if i > 0:
+        if pushed > 0:
             time.sleep(PAUSE_SECONDS)
         print(f"{group_key}: {row['title']} ({len(photos[group_key])} photos)")
-        push_bag(token, row, photos[group_key])
+        product_id = push_bag(token, row, photos[group_key])
+        # Save straight away. The gap between "Shopify created it" and "we wrote it
+        # down" is the one moment a crash could still cause a duplicate - keep it tiny.
+        mark_pushed(con, group_key, product_id)
+        print(f"  saved: status=pushed, shopify_product_id={product_id}")
+        pushed += 1
+
+    print(f"\n{pushed} pushed" if pushed else "\nNothing to push.")
     con.close()
 
 
