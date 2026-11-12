@@ -1,6 +1,7 @@
 """W03-D4 to W04-D5 - extract every bag group into catalog.db; skip done work, survive failures.
 
 Run:  python extract.py --limit 10
+W06-D1: or through the one front door, python run.py --stage extract --limit 10 --confirm
 """
 
 import argparse
@@ -133,6 +134,43 @@ def extract_group(client, group_key, paths):
     return None, error_text, cost_usd
 
 
+def decide(row, current_hash):
+    """Should this group be sent to the model? Returns (send, why).
+
+    One rule in one place, so the dry run and the real run can never disagree.
+    """
+    if row and row["status"] in ("extracted", "pushed") and row["photo_hash"] == current_hash:
+        return False, f"already {row['status']}"
+    if row is None:
+        return True, "new"
+    if row["photo_hash"] is not None and row["photo_hash"] != current_hash \
+            and row["status"] != "failed":
+        return True, "photos changed"
+    return True, f"was {row['status']}"
+
+
+def plan(groups, con):
+    """W06-D1 dry run: say what a real run would send to the model, and send nothing."""
+    to_send, skipped = 0, 0
+    for group_key, paths in groups.items():
+        send, why = decide(get_product(con, group_key), photos_hash(paths))
+        if send:
+            to_send += 1
+            print(f"{group_key}: would extract ({len(paths)} photo{'s' if len(paths) > 1 else ''}, {why})")
+        else:
+            skipped += 1
+            print(f"{group_key}: skipped ({why})")
+    print(f"\nDry run: {to_send} bag(s) would go to the model, {skipped} skipped, 0 sent.")
+    return {"to_send": to_send, "skipped": skipped}
+
+
+def first(groups, limit):
+    """The first N groups. They are sorted by key, so --limit 10 always means the same ten."""
+    if limit is None:
+        return groups
+    return dict(list(groups.items())[:limit])
+
+
 def run(client, groups, con):
     """Extract every group into the database. One group failing never stops the others."""
     new, skipped, failed, total_cost = 0, 0, 0, 0.0
@@ -143,16 +181,13 @@ def run(client, groups, con):
         progress = f"[{n:>{width}}/{len(groups)}]"
         current_hash = photos_hash(paths)
 
-        # W04-D4: check the database first.
+        # W04-D4: check the database first. W06-D1: the rule itself lives in decide().
         row = get_product(con, group_key)
-        if row and row["status"] in ("extracted", "pushed") and row["photo_hash"] == current_hash:
+        send, why = decide(row, current_hash)
+        if not send:
             skipped += 1
-            print(f"{progress} {group_key}: skipped (already {row['status']})")
+            print(f"{progress} {group_key}: skipped ({why})")
             continue
-
-        why = "new" if row is None else f"was {row['status']}"
-        if row and row["photo_hash"] != current_hash and row["status"] != "failed":
-            why = "photos changed"
         print(f"\n{progress} {group_key} ({len(paths)} photo{'s' if len(paths) > 1 else ''}, {why})")
 
         # W04-D5: each bag gets its own try/except. Anything unexpected for THIS bag
@@ -207,10 +242,7 @@ def main():
     if not os.getenv("ANTHROPIC_API_KEY"):
         raise SystemExit("ANTHROPIC_API_KEY is not set. Check your .env file.")
 
-    groups = group_photos(args.folder)
-    if args.limit is not None:
-        # Groups are sorted by key, so --limit 10 always means the same first ten.
-        groups = dict(list(groups.items())[:args.limit])
+    groups = first(group_photos(args.folder), args.limit)
 
     con = connect(args.db)
     try:

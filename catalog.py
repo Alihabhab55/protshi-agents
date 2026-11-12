@@ -132,6 +132,27 @@ def mark_pushed(con, group_key, shopify_product_id):
     con.commit()
 
 
+def add_pending(con, group_key):
+    """W06-D1: the ingest stage registers a bag the moment its photos land in photos/.
+
+    INSERT OR IGNORE: group_key is UNIQUE, so if the row already exists nothing
+    happens - running ingest twice never resets a bag that was extracted or pushed.
+    Returns True if a new row was created.
+    """
+    cur = con.execute(
+        "INSERT OR IGNORE INTO products (group_key, status) VALUES (?, 'pending')",
+        (group_key,),
+    )
+    con.commit()
+    return cur.rowcount == 1
+
+
+def count_by_status(con):
+    """{'extracted': 24, 'pushed': 2} - where every bag stands, in one line."""
+    return {status: n for status, n in con.execute(
+        "SELECT status, COUNT(*) FROM products GROUP BY status ORDER BY status")}
+
+
 def get_product(con, group_key):
     """One bag as a dict (lists already turned back into lists), or None."""
     row = con.execute("SELECT * FROM products WHERE group_key = ?", (group_key,)).fetchone()

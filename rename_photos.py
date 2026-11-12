@@ -10,6 +10,9 @@ Each subfolder becomes the next free bag-NNN. Photos are numbered _1, _2 ... in
 filename order, so the first file is the main photo (rename it to "0 ..." to choose).
 Folder names are only for you; they are written to rename_log.csv for reference.
 
+W06-D1: this is the 'ingest' stage of run.py. Each copied bag gets a 'pending'
+row in catalog.db.
+
 Run:  python rename_photos.py              (dry run: shows the plan, copies nothing)
       python rename_photos.py --apply      (copies; originals in the inbox stay)
 """
@@ -21,6 +24,7 @@ import re
 import shutil
 from pathlib import Path
 
+from catalog import add_pending, connect
 from group_photos import PHOTO_NAME, group_photos
 from images import extension_for, media_type_of
 
@@ -81,18 +85,17 @@ def build_plan(inbox, photos_dir):
     return plan, problems
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Copy sorted photo folders into photos/ as bag-NNN_N.")
-    parser.add_argument("--inbox", default="photos_inbox", help="folder of bag subfolders")
-    parser.add_argument("--photos", default="photos", help="destination (default: photos)")
-    parser.add_argument("--apply", action="store_true", help="actually copy (default: dry run)")
-    args = parser.parse_args()
+def ingest(inbox, photos_dir, *, limit=None, apply=False, con=None):
+    """W06-D1: the ingest stage. Plan, print, and - only with apply - copy and register.
 
-    inbox, photos_dir = Path(args.inbox), Path(args.photos)
-    if not inbox.is_dir():
-        raise SystemExit(f"Not a folder: {inbox}")
-
+    limit: at most N bag folders this run; the rest simply wait in the inbox.
+    con:   a catalog.db connection - every copied bag gets a 'pending' row, so the
+           extract stage can see it in the database before it has been extracted.
+    Returns {"bags": n, "photos": n, "problems": n}.
+    """
     plan, problems = build_plan(inbox, photos_dir)
+    if limit is not None:
+        plan = plan[:limit]     # bag numbers were assigned in order, so a cut keeps them
 
     for bag_key, folder_name, files in plan:
         print(f"{bag_key}  <-  {folder_name}/  ({len(files)} photo{'s' if len(files) > 1 else ''})")
@@ -105,10 +108,11 @@ def main():
 
     total = sum(len(files) for _, _, files in plan)
     print(f"\n{len(plan)} bags, {total} photos, {len(problems)} problems")
+    result = {"bags": len(plan), "photos": total, "problems": len(problems)}
 
-    if not args.apply:
-        print("Dry run - nothing copied. Add --apply to copy.")
-        return
+    if not apply:
+        print("Dry run - nothing copied.")
+        return result
 
     photos_dir.mkdir(exist_ok=True)
     new_log = not LOG.exists()
@@ -121,7 +125,32 @@ def main():
                 # copy2 keeps the file's original dates. The inbox copy stays put.
                 shutil.copy2(src, photos_dir / dest)
                 writer.writerow([bag_key, dest, src.name, folder_name])
+            if con is not None:
+                add_pending(con, bag_key)
     print(f"Copied {total} photos into {photos_dir}/ and logged them in {LOG}.")
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Copy sorted photo folders into photos/ as bag-NNN_N.")
+    parser.add_argument("--inbox", default="photos_inbox", help="folder of bag subfolders")
+    parser.add_argument("--photos", default="photos", help="destination (default: photos)")
+    parser.add_argument("--db", default="catalog.db", help="database file (default: catalog.db)")
+    parser.add_argument("--apply", action="store_true", help="actually copy (default: dry run)")
+    args = parser.parse_args()
+
+    inbox, photos_dir = Path(args.inbox), Path(args.photos)
+    if not inbox.is_dir():
+        raise SystemExit(f"Not a folder: {inbox}")
+
+    con = connect(args.db) if args.apply else None
+    try:
+        ingest(inbox, photos_dir, apply=args.apply, con=con)
+        if not args.apply:
+            print("Add --apply to copy.")
+    finally:
+        if con is not None:
+            con.close()
 
 
 if __name__ == "__main__":

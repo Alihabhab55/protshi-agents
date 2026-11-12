@@ -3,6 +3,8 @@
 DRY RUN BY DEFAULT: prints what it would send and sends nothing. --confirm pushes for real.
 Bags that already have a shopify_product_id are skipped - pushing twice creates nothing.
 
+W06-D1: this is the 'push' stage of run.py.
+
 Run:  python push.py --limit 1              (dry run: show the next bag)
       python push.py --limit 1 --confirm    (create it in Shopify)
       python push.py bag-005 --confirm      (a specific bag)
@@ -113,31 +115,12 @@ def bags_to_push(con, requested):
     return [(key, get_product(con, key)) for key in keys]
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Push extracted bags to Shopify as drafts. DRY RUN unless --confirm.")
-    parser.add_argument("groups", nargs="*", help="group keys (default: every bag not yet pushed)")
-    parser.add_argument("--limit", type=int, default=None, help="push at most N bags")
-    mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--dry-run", action="store_true",
-                      help="show what would be sent, send nothing (the default anyway)")
-    mode.add_argument("--confirm", action="store_true",
-                      help="really create the products in Shopify")
-    args = parser.parse_args()
-    live = args.confirm
-
-    con = connect()
-    photos = group_photos("photos")
-    candidates = bags_to_push(con, args.groups)
-    # Token only for a real push: a dry run must not talk to Shopify at all.
-    token = get_token() if live else None
-
-    print("LIVE PUSH - creating products in Shopify\n" if live
-          else "DRY RUN - nothing will be sent. Add --confirm to push for real.\n")
-
+def push_bags(con, photos, candidates, *, limit=None, live=False, token=None):
+    """W06-D1: the push stage. Dry run shows each bag; live creates it and records the id.
+    Returns how many bags were shown or pushed."""
     done = 0
     for group_key, row in candidates:
-        if args.limit is not None and done >= args.limit:
+        if limit is not None and done >= limit:
             break
         # W05-D5: check the database first. A Shopify id means it's already there -
         # pushing again would create a duplicate product.
@@ -167,6 +150,32 @@ def main():
         print(f"\n{done} pushed" if done else "\nNothing to push.")
     else:
         print(f"\nDry run: {done} bag(s) shown, 0 sent." if done else "\nNothing to push.")
+    return done
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Push extracted bags to Shopify as drafts. DRY RUN unless --confirm.")
+    parser.add_argument("groups", nargs="*", help="group keys (default: every bag not yet pushed)")
+    parser.add_argument("--limit", type=int, default=None, help="push at most N bags")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true",
+                      help="show what would be sent, send nothing (the default anyway)")
+    mode.add_argument("--confirm", action="store_true",
+                      help="really create the products in Shopify")
+    args = parser.parse_args()
+    live = args.confirm
+
+    con = connect()
+    photos = group_photos("photos")
+    candidates = bags_to_push(con, args.groups)
+    # Token only for a real push: a dry run must not talk to Shopify at all.
+    token = get_token() if live else None
+
+    print("LIVE PUSH - creating products in Shopify\n" if live
+          else "DRY RUN - nothing will be sent. Add --confirm to push for real.\n")
+
+    push_bags(con, photos, candidates, limit=args.limit, live=live, token=token)
     con.close()
 
 

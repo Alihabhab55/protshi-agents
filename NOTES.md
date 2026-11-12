@@ -530,3 +530,37 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
   - D5 `push.py bag-001 bag-002 --confirm` → both "already pushed", nothing created ✅
   - D6 `push.py --limit 1` sends nothing; only `--confirm` creates ✅
   - catalog.db: 24 extracted, 2 pushed. All test files pass.
+
+## Week 6 — Pipeline + GitHub milestone
+
+- **W06·D1 one entry point: `run.py --stage ingest|extract|push|all`.** The three
+  scripts stay, but their loops moved into functions that run.py imports:
+  `rename_photos.ingest()`, `extract.plan()`/`extract.run()`, `push.push_bags()`.
+  `--limit N` applies per stage; `--dry-run` is the default and `--confirm` does it for
+  real (the W05·D6 rule, now for every stage). Each stage reads and writes catalog.db,
+  so any one can run alone and `all` is just the three in a row.
+  - **The `pending` status finally has a job.** It was in the schema since W04·D2 but
+    nothing ever wrote it. Now ingest calls `catalog.add_pending()` for each copied bag
+    (`INSERT OR IGNORE`, so a second ingest never resets an extracted or pushed bag), and
+    the extract dry run shows that bag as `would extract (1 photo, was pending)`.
+    Proved in a temp folder + temp db: ingest `--limit 1 --confirm` copied one bag, the
+    extract dry run listed it as pending, a second ingest skipped its photos as duplicates
+    and offered the next folder.
+  - **One rule, one place.** The "send this bag to the model or skip it?" logic was
+    inline in `extract.run()`. A dry run needs the same answer without a client, so it
+    became `extract.decide(row, photo_hash)` → `(send, why)`, used by both. Otherwise the
+    dry run and the real run drift apart and the dry run lies. Small fix on the way: a
+    `pending` row (no photo hash yet) now reads `was pending`, not `photos changed`.
+  - **Dry run of `extract` needs no key and no client.** `run.py` only builds
+    `anthropic.Anthropic()` for a live run, and checks `ANTHROPIC_API_KEY` *before* any
+    stage starts, so `all --confirm` can't copy photos and then die at extract. Shopify
+    credentials are checked by `get_token()` when a live push starts.
+  - **Refactor without changing behaviour, and prove it:** the four test scripts
+    (`test_catalog`, `test_resume`, `test_retry`, `test_push_dryrun`) still pass unchanged.
+    `test_resume`/`test_retry` import `extract.run` — its signature stayed the same on purpose.
+  - **Known limits.** A dry run of `all` can't show what extract *would* do with bags that
+    ingest *would* copy — nothing was copied. Run `ingest --confirm` first, then look.
+    And the ingest dry run on the real inbox prints 133 "same photo as bag-0NN - skipped"
+    lines because every folder there was already copied in W04·D6; true, just noisy.
+  - Acceptance: `python run.py --stage extract --limit 3` → only the extract stage runs,
+    3 skipped, 0 sent, catalog.db unchanged (24 extracted, 2 pushed) ✅
