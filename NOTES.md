@@ -601,3 +601,29 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
     has the session marker, one timestamped INFO line for bag-001 with model, tokens, cost
     and seconds, and nothing from any HTTP library. `logs/` is in .gitignore. Cost of the
     two real runs: $0.05. All four test scripts pass. ✅
+
+- **W06·D3 four tests, `pytest` → `4 passed`.** `tests/test_pipeline.py`, no API, no
+  network, no catalog.db, under 3 s. `pytest.ini` sets `testpaths = tests` and
+  `pythonpath = .`, so bare `pytest` collects only that folder and the imports work.
+  - **The old `test_*.py` in the root are scripts, not pytest modules.** They run real code
+    at import time (`test_push_dryrun.py` monkeypatches `requests` and calls `push.main()`),
+    so pytest must not collect them — hence `testpaths`. They still run as
+    `python test_resume.py` etc.
+  - The three given tests: 11 tags rejected (and 10 accepted — the limit is 10, not 9);
+    two photos → one group, in photo order; `product_input()` is `DRAFT` whatever the row's
+    status, and sends **no price and no variants**. That last part is how "price 0.00" is
+    actually guaranteed: `ProductCreateInput` has no price field, Shopify creates the one
+    initial variant at 0.00 (read back in W05·D3/D4). Setting a price would need a
+    different mutation, so "never send one" is the testable promise.
+  - **My fourth test: `extract.decide()`.** Six cases: new / already extracted / already
+    pushed / photos changed / was failed / was pending. It is the one rule the dry run and
+    the real run share (W06·D1), so if it drifts, the dry run lies. Cheapest place to
+    guard that.
+  - **A test that cannot fail is decoration.** I broke each promise on purpose and checked
+    the right test went red: `max_length=11` → tags test fails; `"ACTIVE"` → payload test
+    fails; dropping the hash comparison in `decide()` → decide test fails. **The grouper
+    test passed its mutation** — with `_1`/`_2`, NTFS already returns the files in order, so
+    removing `sorted()` changed nothing. Fixed by using `_2` and `_10`: as text `"_10" < "_2"`,
+    so only numeric ordering gets it right (the W03·D1 pitfall). Now all four mutations fail.
+  - pytest and its five dependencies pinned in requirements.txt.
+  - Acceptance: `pytest` → `4 passed` ✅
