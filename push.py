@@ -1,9 +1,10 @@
 """W05-D4 to D6 - push extracted bags to Shopify as drafts, with all their photos in order.
 
-DRY RUN BY DEFAULT: prints what it would send and sends nothing. --confirm pushes for real.
+DRY RUN BY DEFAULT: shows what it would send and sends nothing. --confirm pushes for real.
 Bags that already have a shopify_product_id are skipped - pushing twice creates nothing.
 
 W06-D1: this is the 'push' stage of run.py.
+W06-D2: every line goes through logging - readable on screen, timestamped in logs/run.log.
 
 Run:  python push.py --limit 1              (dry run: show the next bag)
       python push.py --limit 1 --confirm    (create it in Shopify)
@@ -13,12 +14,16 @@ Run:  python push.py --limit 1              (dry run: show the next bag)
 import argparse
 import html
 import json
+import logging
 import time
 
 from catalog import connect, get_product, mark_pushed
 from group_photos import group_photos
 from images import media_type_of
+from log_setup import setup_logging
 from shopify_api import check, get_token, graphql, upload_image
+
+log = logging.getLogger(__name__)
 
 PAUSE_SECONDS = 1.0     # between products, so a bulk push never hammers the API
 WAIT_FOR_MEDIA = 30     # seconds to wait for Shopify to finish processing the photos
@@ -60,12 +65,14 @@ def product_input(row):
 
 
 def push_bag(token, row, photo_paths):
-    """Upload the photos, create the draft, wait for the photos. Returns the product id."""
+    """Upload the photos, create the draft, wait for the photos.
+
+    Returns (product_id, media_statuses)."""
     media = []
     for n, path in enumerate(photo_paths, start=1):
         media_type = media_type_of(path)          # from the bytes - lesson of W04-D6
         resource_url = upload_image(token, path, media_type)
-        print(f"  uploaded {n}/{len(photo_paths)}: {path}")
+        log.debug("uploaded %d/%d: %s", n, len(photo_paths), path)
         media.append({
             "originalSource": resource_url,
             "mediaContentType": "IMAGE",
@@ -78,8 +85,8 @@ def push_bag(token, row, photo_paths):
     if result["userErrors"]:
         raise SystemExit(f"Shopify refused the product: {result['userErrors']}")
     product = result["product"]
-    print(f"  created {product['id']} - {product['status']}, "
-          f"price {product['variants']['nodes'][0]['price']}")
+    log.debug("created %s - %s, price %s", product["id"], product["status"],
+              product["variants"]["nodes"][0]["price"])
 
     # Shopify processes photos after the product exists (status UPLOADED -> PROCESSING
     # -> READY). Wait a little so we can report what happened instead of guessing.
@@ -90,18 +97,16 @@ def push_bag(token, row, photo_paths):
         if all(s in ("READY", "FAILED") for s in statuses) or time.monotonic() > deadline:
             break
         time.sleep(2)
-    print(f"  photos: {len(nodes)} attached, statuses {statuses}")
-    return product["id"]
+    return product["id"], statuses
 
 
 def show_dry_run(row, photo_paths):
-    """Print exactly what would be sent. Touches nothing: no token, no upload, no write."""
-    print("  would create:")
+    """Show exactly what would be sent. Touches nothing: no token, no upload, no write."""
     body = json.dumps(product_input(row), indent=2, ensure_ascii=False)
-    print("    " + body.replace("\n", "\n    "))
-    print(f"  would upload {len(photo_paths)} photo(s), in this order:")
+    log.info("  would create:\n    %s", body.replace("\n", "\n    "))
+    log.info("  would upload %d photo(s), in this order:", len(photo_paths))
     for n, path in enumerate(photo_paths, start=1):
-        print(f"    {n}. {path}  ({media_type_of(path)})")
+        log.info("    %d. %s  (%s)", n, path, media_type_of(path))
 
 
 def bags_to_push(con, requested):
@@ -125,31 +130,38 @@ def push_bags(con, photos, candidates, *, limit=None, live=False, token=None):
         # W05-D5: check the database first. A Shopify id means it's already there -
         # pushing again would create a duplicate product.
         if row and row["shopify_product_id"]:
-            print(f"{group_key}: already pushed as {row['shopify_product_id']} - nothing to push")
+            log.info("%s: already pushed as %s - nothing to push", group_key, row["shopify_product_id"])
             continue
         if row is None or row["status"] != "extracted":
-            print(f"{group_key}: not extracted - skipped")
+            log.info("%s: not extracted - skipped", group_key)
             continue
 
-        print(f"{group_key}: {row['title']} ({len(photos[group_key])} photo{'s' if len(photos[group_key]) > 1 else ''})")
+        paths = photos[group_key]
+        log.info("%s: %s (%d photo%s)", group_key, row["title"], len(paths),
+                 "s" if len(paths) > 1 else "")
         if not live:
-            show_dry_run(row, photos[group_key])
+            show_dry_run(row, paths)
             done += 1
             continue
 
         if done > 0:
             time.sleep(PAUSE_SECONDS)
-        product_id = push_bag(token, row, photos[group_key])
+        started = time.perf_counter()
+        product_id, statuses = push_bag(token, row, paths)
         # Save straight away. The gap between "Shopify created it" and "we wrote it
         # down" is the one moment a crash could still cause a duplicate - keep it tiny.
         mark_pushed(con, group_key, product_id)
-        print(f"  saved: status=pushed, shopify_product_id={product_id}")
+        # W06-D2: ONE line per bag - where it went, its photos, how long it took.
+        log.info("%s: pushed %s | %d photo%s %s | %.1fs", group_key, product_id,
+                 len(statuses), "s" if len(statuses) > 1 else "",
+                 "all READY" if all(s == "READY" for s in statuses) else statuses,
+                 time.perf_counter() - started)
         done += 1
 
     if live:
-        print(f"\n{done} pushed" if done else "\nNothing to push.")
+        log.info("%d pushed" if done else "Nothing to push.", done)
     else:
-        print(f"\nDry run: {done} bag(s) shown, 0 sent." if done else "\nNothing to push.")
+        log.info("Dry run: %d bag(s) shown, 0 sent." if done else "Nothing to push.", done)
     return done
 
 
@@ -165,6 +177,7 @@ def main():
                       help="really create the products in Shopify")
     args = parser.parse_args()
     live = args.confirm
+    setup_logging()
 
     con = connect()
     photos = group_photos("photos")
@@ -172,8 +185,8 @@ def main():
     # Token only for a real push: a dry run must not talk to Shopify at all.
     token = get_token() if live else None
 
-    print("LIVE PUSH - creating products in Shopify\n" if live
-          else "DRY RUN - nothing will be sent. Add --confirm to push for real.\n")
+    log.info("LIVE PUSH - creating products in Shopify" if live
+             else "DRY RUN - nothing will be sent. Add --confirm to push for real.")
 
     push_bags(con, photos, candidates, limit=args.limit, live=live, token=token)
     con.close()

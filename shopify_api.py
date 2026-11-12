@@ -3,12 +3,15 @@
 Uses the GraphQL Admin API, not REST (REST is legacy at Shopify - see NOTES.md, W05).
 """
 
+import logging
 import os
 import time
 from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
+
+log = logging.getLogger(__name__)
 
 API_VERSION = "2026-10"   # pinned: Shopify releases a new version every 3 months
 TIMEOUT = 30              # seconds; never wait forever on the network
@@ -77,7 +80,7 @@ def graphql(token, query, variables=None):
         # Retry-After = how many seconds Shopify asks us to wait. Otherwise back off:
         # 2, 4, 8 seconds - waiting longer each time gives the bucket time to refill.
         wait = float(response.headers.get("Retry-After", 2 ** attempt))
-        print(f"  Shopify says slow down (attempt {attempt}) - waiting {wait:.0f}s")
+        log.warning("Shopify says slow down (attempt %d) - waiting %.0fs", attempt, wait)
         time.sleep(wait)
 
 

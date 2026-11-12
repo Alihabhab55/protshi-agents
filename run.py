@@ -5,6 +5,7 @@
 Every stage reads and writes catalog.db, so each can run on its own, and 'all' is
 just the three in a row. DRY RUN BY DEFAULT (the lesson of W05-D6): without --confirm
 no photo is copied, no model is called and nothing reaches Shopify.
+W06-D2: everything is logged - readable on screen, with timestamps in logs/run.log.
 
 Run:  python run.py --stage extract --limit 3             (dry run: what would be extracted)
       python run.py --stage extract --limit 3 --confirm   (really extract up to 3 bags)
@@ -12,6 +13,7 @@ Run:  python run.py --stage extract --limit 3             (dry run: what would b
 """
 
 import argparse
+import logging
 import os
 from pathlib import Path
 
@@ -23,7 +25,10 @@ import push
 import rename_photos
 from catalog import connect, count_by_status
 from group_photos import group_photos
+from log_setup import setup_logging
 from shopify_api import get_token
+
+log = logging.getLogger("run")      # not __name__: that is "__main__" when run directly
 
 STAGES = ("ingest", "extract", "push")      # in pipeline order - 'all' runs them like this
 
@@ -78,6 +83,7 @@ def main():
     args = parser.parse_args()
     live = args.confirm
     stages = list(STAGES) if args.stage == "all" else [args.stage]
+    setup_logging()         # after parse_args, so --help never creates logs/
 
     # Fail before doing anything, not halfway through: a live extract needs the key.
     # Shopify credentials are checked by get_token() when a live push starts.
@@ -86,19 +92,20 @@ def main():
         raise SystemExit("ANTHROPIC_API_KEY is not set. Check your .env file.")
 
     effects = {"ingest": "photos copied", "extract": "model called", "push": "products created"}
-    print("LIVE RUN - " + ", ".join(effects[s] for s in stages) + "." if live else
-          "DRY RUN - nothing will be copied, called or created. Add --confirm to run for real.")
+    log.info("LIVE RUN - " + ", ".join(effects[s] for s in stages) + "." if live else
+             "DRY RUN - nothing will be copied, called or created. Add --confirm to run for real.")
 
     con = connect(args.db)
     try:
         for stage in stages:
-            print(f"\n=== {stage} ({'live' if live else 'dry run'}) ===")
+            log.info("=== %s (%s) ===", stage, "live" if live else "dry run")
             RUN[stage](args, con, live)
         counts = count_by_status(con)
-        print(f"\n{args.db}: " + (", ".join(f"{n} {status}" for status, n in counts.items())
-                                   or "empty"))
+        log.info("%s: %s", args.db,
+                 ", ".join(f"{n} {status}" for status, n in counts.items()) or "empty")
     except KeyboardInterrupt:
         # Ctrl+C: every finished bag is already committed. Nothing to clean up.
+        log.warning("interrupted by Ctrl+C - finished bags are saved")
         raise SystemExit("\nInterrupted. Finished bags are saved - run again to continue.")
     except anthropic.AuthenticationError:
         raise SystemExit("\nThe API key was rejected (401). Check ANTHROPIC_API_KEY in .env.")

@@ -5,12 +5,15 @@ Convention:  bag-014_1.jpg  ->  group key "bag-014", photo number 1.
 Run:  python group_photos.py photos
 """
 
+import logging
 import re
 import sys
 from pathlib import Path
 
 # bag- + exactly 3 digits, then _ + photo number, then an image extension.
 # re.IGNORECASE so .JPG and .jpg are treated the same.
+log = logging.getLogger(__name__)
+
 PHOTO_NAME = re.compile(r"^(bag-\d{3})_(\d+)\.(jpg|jpeg|png|webp)$", re.IGNORECASE)
 
 
@@ -27,7 +30,7 @@ def group_photos(folder):
 
         match = PHOTO_NAME.match(path.name)
         if match is None:
-            print(f"Skipping {path.name}: does not match bag-NNN_N.jpg")
+            log.warning("skipping %s: does not match bag-NNN_N.jpg", path.name)
             continue
 
         group_key = match.group(1)            # "bag-002"

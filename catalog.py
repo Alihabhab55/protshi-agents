@@ -4,7 +4,10 @@ Run:  python catalog.py   (creates catalog.db and the products table, then lists
 """
 
 import json
+import logging
 import sqlite3
+
+log = logging.getLogger(__name__)
 
 DB_PATH = "catalog.db"
 
@@ -93,7 +96,7 @@ def _migrate_shopify_id_to_text(con):
     except Exception:
         con.rollback()
         raise
-    print("catalog.db: migrated shopify_product_id to TEXT")
+    log.info("catalog.db: migrated shopify_product_id to TEXT")
 
 
 def connect(path=DB_PATH):

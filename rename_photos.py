@@ -12,6 +12,7 @@ Folder names are only for you; they are written to rename_log.csv for reference.
 
 W06-D1: this is the 'ingest' stage of run.py. Each copied bag gets a 'pending'
 row in catalog.db.
+W06-D2: every line goes through logging - readable on screen, timestamped in logs/run.log.
 
 Run:  python rename_photos.py              (dry run: shows the plan, copies nothing)
       python rename_photos.py --apply      (copies; originals in the inbox stay)
@@ -20,6 +21,7 @@ Run:  python rename_photos.py              (dry run: shows the plan, copies noth
 import argparse
 import csv
 import hashlib
+import logging
 import re
 import shutil
 from pathlib import Path
@@ -27,10 +29,13 @@ from pathlib import Path
 from catalog import add_pending, connect
 from group_photos import PHOTO_NAME, group_photos
 from images import extension_for, media_type_of
+from log_setup import setup_logging
+
+log = logging.getLogger(__name__)
 
 ALLOWED = {".jpg": ".jpg", ".jpeg": ".jpg", ".png": ".png", ".webp": ".webp"}
 MAX_BYTES = 5 * 1024 * 1024      # the API's per-image limit
-LOG = Path("rename_log.csv")
+RENAME_LOG = Path("rename_log.csv")
 
 
 def sha256(path):
@@ -86,7 +91,7 @@ def build_plan(inbox, photos_dir):
 
 
 def ingest(inbox, photos_dir, *, limit=None, apply=False, con=None):
-    """W06-D1: the ingest stage. Plan, print, and - only with apply - copy and register.
+    """W06-D1: the ingest stage. Plan, report, and - only with apply - copy and register.
 
     limit: at most N bag folders this run; the rest simply wait in the inbox.
     con:   a catalog.db connection - every copied bag gets a 'pending' row, so the
@@ -98,25 +103,24 @@ def ingest(inbox, photos_dir, *, limit=None, apply=False, con=None):
         plan = plan[:limit]     # bag numbers were assigned in order, so a cut keeps them
 
     for bag_key, folder_name, files in plan:
-        print(f"{bag_key}  <-  {folder_name}/  ({len(files)} photo{'s' if len(files) > 1 else ''})")
+        log.info("%s  <-  %s/  (%d photo%s)", bag_key, folder_name, len(files),
+                 "s" if len(files) > 1 else "")
         for src, dest in files:
-            print(f"    {src.name:<24} -> {dest}")
-    if problems:
-        print("\nProblems:")
-        for p in problems:
-            print(f"  - {p}")
+            log.info("    %-24s -> %s", src.name, dest)
+    for problem in problems:
+        log.warning(problem)
 
     total = sum(len(files) for _, _, files in plan)
-    print(f"\n{len(plan)} bags, {total} photos, {len(problems)} problems")
+    log.info("%d bags, %d photos, %d problems", len(plan), total, len(problems))
     result = {"bags": len(plan), "photos": total, "problems": len(problems)}
 
     if not apply:
-        print("Dry run - nothing copied.")
+        log.info("Dry run - nothing copied.")
         return result
 
     photos_dir.mkdir(exist_ok=True)
-    new_log = not LOG.exists()
-    with LOG.open("a", newline="", encoding="utf-8") as f:
+    new_log = not RENAME_LOG.exists()
+    with RENAME_LOG.open("a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         if new_log:
             writer.writerow(["bag_key", "new_name", "original_name", "inbox_folder"])
@@ -127,7 +131,9 @@ def ingest(inbox, photos_dir, *, limit=None, apply=False, con=None):
                 writer.writerow([bag_key, dest, src.name, folder_name])
             if con is not None:
                 add_pending(con, bag_key)
-    print(f"Copied {total} photos into {photos_dir}/ and logged them in {LOG}.")
+            log.info("%s: ingested %d photo%s from %s/", bag_key, len(files),
+                     "s" if len(files) > 1 else "", folder_name)
+    log.info("Copied %d photos into %s/ and logged them in %s.", total, photos_dir, RENAME_LOG)
     return result
 
 
@@ -138,6 +144,7 @@ def main():
     parser.add_argument("--db", default="catalog.db", help="database file (default: catalog.db)")
     parser.add_argument("--apply", action="store_true", help="actually copy (default: dry run)")
     args = parser.parse_args()
+    setup_logging()
 
     inbox, photos_dir = Path(args.inbox), Path(args.photos)
     if not inbox.is_dir():
@@ -147,7 +154,7 @@ def main():
     try:
         ingest(inbox, photos_dir, apply=args.apply, con=con)
         if not args.apply:
-            print("Add --apply to copy.")
+            log.info("Add --apply to copy.")
     finally:
         if con is not None:
             con.close()

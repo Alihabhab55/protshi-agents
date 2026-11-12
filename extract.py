@@ -2,12 +2,14 @@
 
 Run:  python extract.py --limit 10
 W06-D1: or through the one front door, python run.py --stage extract --limit 10 --confirm
+W06-D2: every line goes through logging - readable on screen, timestamped in logs/run.log.
 """
 
 import argparse
 import base64
 import hashlib
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -19,7 +21,10 @@ from pydantic import ValidationError
 from catalog import connect, get_product, save_product
 from group_photos import group_photos
 from images import media_type_of
+from log_setup import setup_logging
 from schema import ProductDraft
+
+log = logging.getLogger(__name__)
 
 MODEL = "claude-opus-5"
 # claude-opus-5 list prices, USD per million tokens. W07-D5 moves these to config.py.
@@ -84,12 +89,13 @@ def describe_errors(e):
 
 
 def extract_group(client, group_key, paths):
-    """Return (draft, None, cost_usd) on success or (None, error_text, cost_usd).
+    """Return (draft, None, usage) on success or (None, error_text, usage).
 
-    cost_usd adds up every attempt - a retry is paid for too.
-    Never raises for a bad answer - the caller can always move on to the next group.
+    usage = {"input_tokens", "output_tokens", "cost_usd"} summed over every attempt -
+    a retry is paid for too. Never raises for a bad answer - the caller can always
+    move on to the next group.
     """
-    cost_usd = 0.0
+    usage = {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
     messages = [{
         "role": "user",
         "content": [image_block(p) for p in paths]
@@ -98,21 +104,24 @@ def extract_group(client, group_key, paths):
 
     for attempt in (1, 2):
         response = ask(client, messages)
-        cost_usd += cost_of(response.usage)
-        print(f"  attempt {attempt}: stop_reason={response.stop_reason}  "
-              f"in={response.usage.input_tokens} out={response.usage.output_tokens}")
+        usage["input_tokens"] += response.usage.input_tokens
+        usage["output_tokens"] += response.usage.output_tokens
+        usage["cost_usd"] += cost_of(response.usage)
+        # Per-attempt detail: the file wants it, the screen does not.
+        log.debug("%s attempt %d: stop_reason=%s in=%d out=%d", group_key, attempt,
+                  response.stop_reason, response.usage.input_tokens, response.usage.output_tokens)
 
         tool_call = next((b for b in response.content if b.type == "tool_use"), None)
         if tool_call is None:
             # Nothing to correct - there is no tool call to answer with an error.
-            return None, f"no tool call (stop_reason={response.stop_reason})", cost_usd
+            return None, f"no tool call (stop_reason={response.stop_reason})", usage
 
         # 1. Validate every result against ProductDraft.
         try:
-            return ProductDraft.model_validate(tool_call.input), None, cost_usd
+            return ProductDraft.model_validate(tool_call.input), None, usage
         except ValidationError as e:
             error_text = describe_errors(e)
-            print(f"  attempt {attempt} broke the rules:\n{error_text}")
+            log.warning("%s attempt %d broke the rules:\n%s", group_key, attempt, error_text)
 
         # 2. Send the error back once. The conversation must stay in order:
         # our photos -> the model's tool call -> our tool_result saying what was wrong.
@@ -127,11 +136,11 @@ def extract_group(client, group_key, paths):
                            + "\nCall save_product_draft again with every problem fixed.",
             }],
         })
-        # Raw arguments, so you can see what it actually sent.
-        print(f"  rejected input: {json.dumps(tool_call.input)}")
+        # Raw arguments, so you can see in the file what it actually sent.
+        log.debug("%s rejected input: %s", group_key, json.dumps(tool_call.input))
 
     # 3. Two failures: give up on this group, but only this group.
-    return None, error_text, cost_usd
+    return None, error_text, usage
 
 
 def decide(row, current_hash):
@@ -156,11 +165,12 @@ def plan(groups, con):
         send, why = decide(get_product(con, group_key), photos_hash(paths))
         if send:
             to_send += 1
-            print(f"{group_key}: would extract ({len(paths)} photo{'s' if len(paths) > 1 else ''}, {why})")
+            log.info("%s: would extract (%d photo%s, %s)", group_key, len(paths),
+                     "s" if len(paths) > 1 else "", why)
         else:
             skipped += 1
-            print(f"{group_key}: skipped ({why})")
-    print(f"\nDry run: {to_send} bag(s) would go to the model, {skipped} skipped, 0 sent.")
+            log.info("%s: skipped (%s)", group_key, why)
+    log.info("Dry run: %d bag(s) would go to the model, %d skipped, 0 sent.", to_send, skipped)
     return {"to_send": to_send, "skipped": skipped}
 
 
@@ -173,7 +183,8 @@ def first(groups, limit):
 
 def run(client, groups, con):
     """Extract every group into the database. One group failing never stops the others."""
-    new, skipped, failed, total_cost = 0, 0, 0, 0.0
+    new, skipped, failed = 0, 0, 0
+    totals = {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
     started = time.perf_counter()          # a stopwatch: seconds since some fixed point
     width = len(str(len(groups)))
 
@@ -186,42 +197,53 @@ def run(client, groups, con):
         send, why = decide(row, current_hash)
         if not send:
             skipped += 1
-            print(f"{progress} {group_key}: skipped ({why})")
+            log.info("%s %s: skipped (%s)", progress, group_key, why)
             continue
-        print(f"\n{progress} {group_key} ({len(paths)} photo{'s' if len(paths) > 1 else ''}, {why})")
+        log.info("%s %s: %d photo%s, %s", progress, group_key, len(paths),
+                 "s" if len(paths) > 1 else "", why)
+        bag_started = time.perf_counter()
 
         # W04-D5: each bag gets its own try/except. Anything unexpected for THIS bag
         # (network down, server error, unreadable photo) becomes a failed row, and the
         # loop moves on. Ctrl+C is not an Exception (it's KeyboardInterrupt), so it is
         # NOT caught here - pressing it still stops the run.
         try:
-            draft, error, cost_usd = extract_group(client, group_key, paths)
+            draft, error, usage = extract_group(client, group_key, paths)
         except (anthropic.AuthenticationError, anthropic.PermissionDeniedError):
             # A bad key fails every bag the same way - stop instead of failing them all.
             raise
         except Exception as e:
-            draft, error, cost_usd = None, f"{type(e).__name__}: {e}", 0.0
-            print(f"  error: {error}")
-        total_cost += cost_usd
+            draft, error = None, f"{type(e).__name__}: {e}"
+            usage = {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
+            # The full traceback goes to the file only (DEBUG); the screen gets one line.
+            log.debug("%s traceback:", group_key, exc_info=True)
+        for key in totals:
+            totals[key] += usage[key]
+        seconds = time.perf_counter() - bag_started
 
         # Write the row straight away - success or failure - with what it cost.
         # save_product commits inside, so this bag is safe on disk before the next starts.
+        # W06-D2: then ONE line per bag with model, tokens, cost and elapsed seconds.
+        detail = (f"{MODEL} | {usage['input_tokens']} in / {usage['output_tokens']} out "
+                  f"| ${usage['cost_usd']:.4f} | {seconds:.1f}s")
         if draft is not None:
             new += 1
             save_product(con, group_key, "extracted", draft, photo_hash=current_hash,
-                         model_used=MODEL, cost_usd=cost_usd)
-            print(f"  valid - {draft.title}  (${cost_usd:.4f})")
+                         model_used=MODEL, cost_usd=usage["cost_usd"])
+            log.info('%s: extracted "%s" | %s', group_key, draft.title, detail)
         else:
             failed += 1
             save_product(con, group_key, "failed", photo_hash=current_hash,
-                         model_used=MODEL, cost_usd=cost_usd, error=error)
-            print(f"  FAILED - saved as failed, moving on  (${cost_usd:.4f})")
+                         model_used=MODEL, cost_usd=usage["cost_usd"], error=error)
+            log.error("%s: FAILED %s | %s", group_key, error.splitlines()[0], detail)
 
     elapsed = time.perf_counter() - started
     minutes, seconds = divmod(elapsed, 60)
-    print(f"\n{new} new | {skipped} skipped | {failed} failed | ${total_cost:.2f} "
-          f"| {int(minutes)}m {seconds:.1f}s")
-    return {"new": new, "skipped": skipped, "failed": failed, "cost_usd": total_cost,
+    log.info("%d new | %d skipped | %d failed | %d in / %d out | $%.2f | %dm %.1fs",
+             new, skipped, failed, totals["input_tokens"], totals["output_tokens"],
+             totals["cost_usd"], int(minutes), seconds)
+    return {"new": new, "skipped": skipped, "failed": failed, "cost_usd": totals["cost_usd"],
+            "input_tokens": totals["input_tokens"], "output_tokens": totals["output_tokens"],
             "seconds": elapsed}
 
 
@@ -234,6 +256,7 @@ def main():
                         help="only process the first N groups")
     parser.add_argument("--db", default="catalog.db", help="database file (default: catalog.db)")
     args = parser.parse_args()
+    setup_logging()
 
     if not Path(args.folder).is_dir():
         raise SystemExit(f"Not a folder: {args.folder}")

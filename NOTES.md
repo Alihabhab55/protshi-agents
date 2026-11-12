@@ -564,3 +564,40 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
     lines because every folder there was already copied in W04·D6; true, just noisy.
   - Acceptance: `python run.py --stage extract --limit 3` → only the extract stage runs,
     3 skipped, 0 sent, catalog.db unchanged (24 extracted, 2 pushed) ✅
+
+- **W06·D2 every print became a log call.** New `log_setup.py` installs two handlers on
+  the root logger, once: a screen handler (stdout, INFO and up, bare messages, `WARNING:`
+  prefix only from WARNING up) and a file handler (`logs/run.log`, DEBUG and up,
+  `time level module: message`, utf-8). Every module just does
+  `log = logging.getLogger(__name__)` and calls `log.info/.warning/.error/.debug` — no
+  module knows where its lines go. That separation is the whole point over `print`.
+  - **Levels as used here:** DEBUG = file-only detail (per-attempt tokens, rejected tool
+    input, tracebacks, the command line that started the run); INFO = one readable line
+    per event; WARNING = odd but handled (duplicate photo, retry, Shopify throttling);
+    ERROR = a bag failed and the run went on.
+  - **One line per bag**, INFO, so it is on screen *and* in the file:
+    `bag-001: extracted "Chevron Quilted Top-Handle Mini Tote" | claude-opus-5 | 2735 in / 384 out | $0.0233 | 5.8s`.
+    `extract_group` now returns a usage dict (tokens + cost) instead of a bare cost, and
+    `run()` times each bag. Push logs `bag-003: pushed gid://... | 2 photos all READY | 7.3s`.
+  - **`%s`, not f-strings, in log calls.** `log.debug("in=%d", n)` formats only if some
+    handler wants DEBUG; an f-string is built every time, even when nobody is listening.
+  - **Broke: the HTTP library name.** I quieted `httpx`/`httpcore` with `setLevel(WARNING)`
+    but the Anthropic SDK here ships its copies as **`httpx2`/`httpcore2`**, so an
+    `HTTP Request: POST ...` line leaked onto the screen and 20 DEBUG lines (TLS, headers,
+    rate-limit headers) into the file for one call. Fix: a `logging.Filter` on both
+    handlers that drops INFO/DEBUG from any logger whose name *starts with* httpx, httpcore,
+    anthropic, urllib3, openai or google — WARNING and up from them still get through.
+    A filter on the handler works whenever the library's logger is created; `setLevel`
+    needs the exact name.
+  - **`__name__` is `"__main__"` for the script you run directly**, so run.py's lines were
+    labelled `__main__` in the file. run.py names its logger `"run"` explicitly.
+  - **Guard against double setup:** `test_push_dryrun.py` calls `push.main()` three times;
+    without a flag on the root logger every line would appear three times.
+  - **utf-8 on the FileHandler** on purpose: the W05·D2 `�` problem would otherwise crash
+    the handler the first time a description contains an em dash — or Arabic in week 10.
+  - Left as `print`: the `__main__` demo blocks of catalog.py, group_photos.py, schema.py,
+    images.py and the week 1–3 one-off scripts. They are not part of the pipeline.
+  - Acceptance: `python run.py --stage extract --limit 1 --db <scratch> --confirm` → run.log
+    has the session marker, one timestamped INFO line for bag-001 with model, tokens, cost
+    and seconds, and nothing from any HTTP library. `logs/` is in .gitignore. Cost of the
+    two real runs: $0.05. All four test scripts pass. ✅
