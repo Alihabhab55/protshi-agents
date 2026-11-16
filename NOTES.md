@@ -692,3 +692,34 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
     the drafts for the same filter, so the data was fine; a reload showed them. Both images
     are cropped to the product area: the uncropped ones showed the store's sales figures,
     order count and browser tabs, and this README will be public.
+
+- **W06·D6 release check, tag `v0.1`.**
+  - **`.env.example` vs the code:** every `os.getenv` in tracked files reads one of
+    `ANTHROPIC_API_KEY`, `SHOPIFY_STORE_DOMAIN`, `SHOPIFY_CLIENT_ID`,
+    `SHOPIFY_CLIENT_SECRET` — exactly the four in `.env.example`, and the four in `.env`. ✅
+  - **No secret in git history**, checked three ways over all 39 commits, every version of
+    every file: (1) the real values from `.env` — key, client id, client secret — found in
+    0 file versions and 0 commit messages (only counts printed, never the values);
+    (2) key formats `sk-ant-…`, `shpss_…`, `shpat_…` → 0; (3) files that must never be
+    committed — `.env`, `*.db`, `photos/`, `logs/`, photos — none; the only images ever
+    committed are the two README screenshots. ✅ The store's `protshi-2` handle appears once
+    in NOTES.md: a public address, not a secret.
+  - **History had forked from GitHub.** `main` was 38 ahead and **1 behind** `origin/main`.
+    GitHub's `9930122 Add .gitignore and pin dependencies` is the first version of local
+    `fdb9ee3` (same author, message and second): amended after it was pushed. The GitHub
+    version also carries 19 stray files (Font Awesome fonts, `.vscode/`) and a .gitignore
+    without `.env`. No secret in it. Lesson: **amending a commit that is already pushed
+    makes two histories**; a plain push is then refused.
+  - **Fresh clone, README only** (`git clone` of this repo into `/tmp`, new venv,
+    `pip install -r requirements.txt`, copy `.env.example`): requirements complete,
+    `pytest` → 4 passed. **But the dry run failed: `Not a folder: photos_inbox`, then
+    `Not a folder: photos`.** Both are gitignored (private photos), so a fresh clone never
+    has them, and the README said to make the inbox only *after* the command. Works on my
+    machine, fails for everyone else — exactly what this test is for.
+  - Fix: README quickstart line 4 also runs `mkdir photos_inbox`; run.py treats a missing
+    `photos/` as "nothing ingested yet, 0 bags" instead of an error; a missing inbox says
+    what to create. Re-ran the whole clone test from zero → dry run exits 0, and with one
+    sample bag folder it plans `bag-001 <- black tote/ (2 photos)`. ✅
+  - Known, not fixed: a dry run still creates an empty `catalog.db` and `logs/` (connect()
+    and the log file). Harmless, but the banner says "nothing created".
+  - Tag: annotated `v0.1` on this commit, pushed with `git push origin v0.1`.
