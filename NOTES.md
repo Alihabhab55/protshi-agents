@@ -686,4 +686,9 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
     `docs/screenshots/draft-product.png` (bag-010, 8 photos). Until they exist the two
     images show as broken links — fine while nothing is pushed to GitHub.
   - Acceptance: paragraph ✅, diagram ✅, five-line quickstart ✅, results table with bags,
-    success rate, cost per bag, total cost, seconds per bag ✅, screenshots ⏳ (by hand).
+    success rate, cost per bag, total cost, seconds per bag ✅, screenshots ✅.
+  - **Screenshots, taken by hand and cropped.** The first list screenshot showed only the
+    W05 TEST product under "Status is Draft": the tab predated the push. The API returned
+    the drafts for the same filter, so the data was fine; a reload showed them. Both images
+    are cropped to the product area: the uncropped ones showed the store's sales figures,
+    order count and browser tabs, and this README will be public.

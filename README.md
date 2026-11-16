@@ -69,7 +69,7 @@ and only those 4 bags were sent again. Every failure and its fix is written down
 
 ## Screenshots
 
-The 26 drafts in the Shopify admin:
+Drafts created by the pipeline, newest first, in the Shopify admin:
 
 ![Drafts in the Shopify admin product list](docs/screenshots/drafts-list.png)
 
