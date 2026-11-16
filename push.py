@@ -158,10 +158,14 @@ def push_bags(con, photos, candidates, *, limit=None, live=False, token=None):
                  time.perf_counter() - started)
         done += 1
 
-    if live:
-        log.info("%d pushed" if done else "Nothing to push.", done)
+    # W06-D4 fix: "Nothing to push." has no %d, so it must not be given an argument -
+    # logging reports "not all arguments converted" instead of printing it.
+    if not done:
+        log.info("Nothing to push.")
+    elif live:
+        log.info("%d pushed", done)
     else:
-        log.info("Dry run: %d bag(s) shown, 0 sent." if done else "Nothing to push.", done)
+        log.info("Dry run: %d bag(s) shown, 0 sent.", done)
     return done
 
 

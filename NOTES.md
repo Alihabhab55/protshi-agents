@@ -627,3 +627,40 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
     so only numeric ordering gets it right (the W03·D1 pitfall). Now all four mutations fail.
   - pytest and its five dependencies pinned in requirements.txt.
   - Acceptance: `pytest` → `4 passed` ✅
+
+- **W06·D4 the other 24 bags pushed, in batches of 10 / 10 / 4.** Every batch: dry run →
+  `run.py --stage push --limit 10 --confirm` → `review_pushed.py <the ten>` → look in the
+  admin → next batch. catalog.db: **26 pushed**, 26 distinct Shopify ids.
+  - **`review_pushed.py` (new, read-only).** Reads each pushed bag back from Shopify by the
+    id in catalog.db and checks the facts: exists, `DRAFT`, title and vendor match, exactly
+    one variant at `0.00`, as many photos as on disk, all `READY`. Exit code 1 if anything
+    is wrong. The admin is for what a person judges (do the photos and words fit?); the
+    script is for what a tired eye misses at product 24. Checked against a known good pair
+    first (bag-001/002 → OK) and against a broken fake (ACTIVE, 2 of 3 photos, one FAILED →
+    all three reported) before it was trusted.
+  - Results: batch 1 (bag-003–012) 40 photos, 106 s; batch 2 (013–022) 56 photos, 130 s;
+    batch 3 (023–026) 10 photos, 33 s. ~11 s per bag, mostly photo processing (12 photos =
+    23.5 s). No API tokens used: push costs nothing on the Claude side.
+  - **Failures: none from Shopify.** 0 userErrors, 0 throttles, 0 upload errors, 0 photos
+    FAILED, 26/26 OK on review. The pause between products (1 s) and the 429 retry from
+    W05·D4 were never needed at this size.
+  - **Failure 1 — a bug of mine, not Shopify's.** The "nothing to push" rerun printed
+    `--- Logging error --- ... not all arguments converted`. Cause: W06·D2 wrote
+    `log.info("%d pushed" if done else "Nothing to push.", done)` — when `done` is 0 the
+    message has no `%d` but still gets an argument. It only shows when there is nothing to
+    push, so no earlier run hit it. Fixed at first sight (cheaper than waiting for a second
+    time): one `if not done` branch with no argument. Grepped the other conditional log
+    lines — they choose an argument, not the message, so they are fine.
+  - **Review finding — bag-012's photo has an "8K ULTRA HIGH RESOLUTION" watermark** in the
+    bottom-right corner. Not a pipeline failure: the source photo has it. Crop or replace
+    `bag-012_1.jpg` (and re-check its other photos) before that listing is made active.
+  - Checked in review, fine: bag-011 and bag-012 have near-identical titles but are two
+    different bags (crystal-set handle vs slim metal bar handle). bag-017 "Monogram" names
+    no brand — the description calls it a tonal embossed circular monogram.
+  - **No duplicates:** rerunning push with `--confirm` → `Nothing to push.`; drafts created
+    in the store since 2026-11-10 = 27 = our 26 + the W05 product
+    `TEST - Protshi agent draft - delete me` (still to delete by hand).
+  - The store also has ~200 earlier products under the same vendor, so "count by vendor" is
+    not a way to find ours — the ids in catalog.db are.
+  - Acceptance: 26/26 bags in Shopify as drafts, reviewed in batches, every failure and its
+    cause written here, nothing failed twice. ✅
