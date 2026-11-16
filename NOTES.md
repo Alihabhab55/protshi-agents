@@ -664,3 +664,26 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
     not a way to find ours — the ids in catalog.db are.
   - Acceptance: 26/26 bags in Shopify as drafts, reviewed in batches, every failure and its
     cause written here, nothing failed twice. ✅
+
+- **W06·D5 README.** Written for a stranger landing on the repo, in the order of their
+  questions: what is it (one paragraph: what it does, for Protshi Garments, the headline
+  number), how does it work (diagram, quickstart), does it work (results table, screenshots).
+  - **Every number comes from catalog.db or this log**, not from memory: 26 rows, all
+    `pushed`, `sum(cost_usd)` = $1.3577, avg $0.052, min $0.023, max $0.215 (bag-022);
+    ≈ 7 s per bag to extract (W04·D6), ≈ 11 s to push (W06·D4); 26/26 on review.
+  - **Success rate stated honestly:** 26/26 in the end, 22/26 on the first run — the 4
+    failures were the `.PNG`-that-is-a-JPEG bags of W04·D6. A table that says only "100%"
+    hides the most useful fact in the project.
+  - **Diagram in Mermaid**, not an image: GitHub draws boxes and arrows from text in the
+    README, so it is diffable and changes with the code. Node names are the real files.
+  - **A `|` inside a table cell splits the column on GitHub, even inside backticks** — the
+    run.py row was rewritten without pipes.
+  - Quickstart checked: `python run.py --stage all --limit 1` runs as a dry run here. It
+    assumes a fresh clone works — that is W06·D6's test, not assumed true yet.
+  - **Screenshots must be real**: the admin cannot be opened from the pipeline, and a
+    generated picture of it would be a fake. Two files to take by hand:
+    `docs/screenshots/drafts-list.png` (products filtered to Draft) and
+    `docs/screenshots/draft-product.png` (bag-010, 8 photos). Until they exist the two
+    images show as broken links — fine while nothing is pushed to GitHub.
+  - Acceptance: paragraph ✅, diagram ✅, five-line quickstart ✅, results table with bags,
+    success rate, cost per bag, total cost, seconds per bag ✅, screenshots ⏳ (by hand).
