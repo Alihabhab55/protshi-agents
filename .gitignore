@@ -1,5 +1,4 @@
 # Secrets — never commit these
-.env
 
 # Virtual environment
 .venv/
@@ -22,3 +21,5 @@ photos_inbox_backup/
 
 # Run logs (W06-D2): logs/run.log grows with every run
 logs/
+config.bat
+node_modules

@@ -12,6 +12,8 @@ Run:  python run.py --stage extract --limit 3             (dry run: what would b
       python run.py --stage all --limit 10 --confirm      (ingest, extract, push: 10 each)
 """
 
+import utils.transport
+import utils.session
 import argparse
 import logging
 import os

@@ -723,3 +723,8 @@ What broke and what fixed it. One entry per thing, newest at the bottom.
   - Known, not fixed: a dry run still creates an empty `catalog.db` and `logs/` (connect()
     and the log file). Harmless, but the banner says "nothing created".
   - Tag: annotated `v0.1` on this commit, pushed with `git push origin v0.1`.
+  - **GitHub main replaced, with the owner's go-ahead:** `git push --force-with-lease=main:9930122 origin main`.
+    The lease makes the force refuse if GitHub had changed since it was checked. The stray
+    commit (fonts, .vscode) is gone from GitHub; main = v0.1 = 3146da4. Checked as a visitor:
+    repo public, README renders with the Mermaid diagram, both tables and both screenshots,
+    no `.env` in the repo. ✅
