@@ -35,7 +35,17 @@ STAGES = ("ingest", "extract", "push")      # in pipeline order - 'all' runs the
 
 def need_folder(path):
     if not Path(path).is_dir():
-        raise SystemExit(f"Not a folder: {path}")
+        raise SystemExit(f"No {path}/ folder. Create it and put one subfolder of photos "
+                         f"per bag inside (see README, Quickstart).")
+
+
+def photo_groups(path):
+    """W06-D6: photos/ only exists after a real ingest. A fresh clone has none (it is
+    gitignored), so a missing folder means "no bags yet", not an error."""
+    if not Path(path).is_dir():
+        log.info("No %s/ folder yet - nothing ingested, so no bags.", path)
+        return {}
+    return group_photos(path)
 
 
 def stage_ingest(args, con, live):
@@ -47,8 +57,7 @@ def stage_ingest(args, con, live):
 
 def stage_extract(args, con, live):
     """photos/ -> one ProductDraft row per bag. Skips bags already in the database."""
-    need_folder(args.photos)
-    groups = extract.first(group_photos(args.photos), args.limit)
+    groups = extract.first(photo_groups(args.photos), args.limit)
     if not live:
         return extract.plan(groups, con)            # no client, no key, no call
     return extract.run(anthropic.Anthropic(), groups, con)
@@ -56,8 +65,7 @@ def stage_extract(args, con, live):
 
 def stage_push(args, con, live):
     """catalog.db rows that are extracted and not yet pushed -> Shopify drafts."""
-    need_folder(args.photos)
-    photos = group_photos(args.photos)
+    photos = photo_groups(args.photos)
     candidates = push.bags_to_push(con, [])         # [] = every extracted, unpushed bag
     token = get_token() if live else None           # a dry run never talks to Shopify
     return push.push_bags(con, photos, candidates, limit=args.limit, live=live, token=token)

@@ -40,11 +40,12 @@ Python 3.13, a Claude API key, and a Shopify app with `read_products` and `write
 git clone https://github.com/Alihabhab55/protshi-agents.git && cd protshi-agents
 python -m venv .venv && .venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-copy .env.example .env                                   # macOS/Linux: cp; then fill in the four keys
+copy .env.example .env && mkdir photos_inbox             # macOS/Linux: cp; then fill in the four keys
 python run.py --stage all --limit 1                      # dry run; add --confirm to do it for real
 ```
 
-Put your photos in `photos_inbox/`, one subfolder per bag. Every command is a **dry run by
+Put your photos in `photos_inbox/`, one subfolder per bag; the folder names are only for
+you. A dry run needs no keys. Every command is a **dry run by
 default**: it shows what it would copy, send or create, and changes nothing until you add
 `--confirm`. Run the tests with `pytest`.
 
